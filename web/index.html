@@ -278,6 +278,13 @@
     margin-top:.5rem;padding-top:.4rem;border-top:1.5px dashed #dcdcdc;letter-spacing:.01em}
   .swrates .rlbl{font-size:.6rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
   .swrates b{color:var(--ink);font-weight:800}
+  /* dual pay/get amount inputs with a direction arrow */
+  .pgpair{display:flex;flex-direction:column;gap:.35rem}
+  .pgrow{display:flex;align-items:center;gap:.5rem;border:2px solid var(--ink);background:#fff;padding:.5rem .6rem}
+  .pgrow .pglbl{font-size:.6rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);flex:0 0 auto;width:3rem}
+  .pgrow input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:ui-monospace,monospace;font-weight:800;font-size:1.05rem;padding:0;color:var(--ink)}
+  .pgrow .pgcoin{flex:0 0 auto;font-weight:850;font-size:.82rem;letter-spacing:.02em}
+  .pgarrow{text-align:center;font-weight:900;font-size:1.05rem;color:var(--burnt);line-height:.5;margin:-.05rem 0}
   .swaggnote{font-size:.68rem;line-height:1.4;color:var(--faint);font-weight:600;margin-top:.4rem}
   .swaggnote b{color:var(--burnt);font-weight:800}
   .dot{width:.55rem;height:.55rem;background:#cfcfcf;flex:0 0 auto}
@@ -522,8 +529,10 @@
                serverless ledger relay. Only reachable when ?twoparty=1. -->
           <div id="twoPartyPanel" style="margin-top:.4rem">
             <div class="sub" style="margin-top:.2rem">Pick a live offer above, enter how much you want to sell, review the exact amounts, then confirm. Settlement is atomic — the other side gets paid only if you do. <b>Experimental: no third-party audit yet, use small amounts.</b> Keep this page open until it says <i>complete</i>; the steps are saved on this device.</div>
-            <div class="add" style="margin-top:.5rem">
-              <input id="tpAmount" inputmode="decimal" placeholder="amount of XMR to sell" autocomplete="off">
+            <div class="pgpair" style="margin-top:.5rem">
+              <div class="pgrow"><span class="pglbl">You pay</span><input id="tpAmount" inputmode="decimal" placeholder="0.00" autocomplete="off"><span class="pgcoin" id="tpPayCoin">XMR</span></div>
+              <div class="pgarrow" id="tpArrow">↓</div>
+              <div class="pgrow"><span class="pglbl">You get</span><input id="tpGet" inputmode="decimal" placeholder="0.00" autocomplete="off"><span class="pgcoin" id="tpGetCoin">XNO</span></div>
             </div>
             <div class="add" style="margin-top:.4rem">
               <input id="tpDest" placeholder="your Monero address to receive at (4… / 8…)" autocomplete="off" spellcheck="false">
@@ -2173,6 +2182,7 @@ document.querySelectorAll("#swSideSel button").forEach(b => b.onclick = () => {
   if (b.dataset.s === swSide) return;
   swSide = b.dataset.s; try { localStorage.setItem("nearinstant_swap_side", swSide); } catch (e) {}
   swSelected = null;                       // the other side's offers are a different list
+  if ($("tpAmount")) $("tpAmount").value = ""; if ($("tpGet")) $("tpGet").value = "";
   swSideSetUI(); swRender();
   if (typeof tpQuoteRender === "function") tpQuoteRender();
   swOffersRefresh(true);
@@ -2431,6 +2441,7 @@ async function swOffersRefresh(force) {
         // Wallet must be unlocked to swap — ask up front, on selection.
         if (!tpWalletOpen()) { if (typeof tpLog === "function") tpLog("Unlock your wallet first to swap this offer — tap the button below."); }
         if (typeof tpBtnSync === "function") tpBtnSync();
+        if (typeof tpSync === "function") tpSync("pay");   // fill the "get" box from the picked offer's price
         // Move the cursor into the amount field and bring it into view.
         const amt = $("tpAmount");
         if (amt) { try { amt.focus({ preventScroll: true }); amt.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { try { amt.focus(); } catch (e2) {} } } };
@@ -3029,6 +3040,34 @@ function tpDestOk() { return tpDestInfo().re.test(tpDestVal()); }
 // The action button demands the receive address BEFORE it ever offers to
 // review/confirm — so "Confirm: You pay…" can never appear without a destination.
 function tpWalletOpen() { try { return !!(walletApi && walletApi.address()); } catch (e) { return false; } }
+// Dual pay/get inputs. The SOLD coin (tpAmount) always drives the real deal
+// (dealFromOffer → the exact xnoRaw/xmrAtomic that settle on-chain); the GET box
+// is the bought coin. Filling either auto-fills the other from the SELECTED
+// offer's on-chain price — these are the real settlement amounts, not estimates.
+function tpCoins() { return swSide === "xmr" ? { pay: "XMR", get: "XNO" } : { pay: "XNO", get: "XMR" }; }
+function tpFmtAmt(v, coin) { if (!(v > 0)) return ""; return String(+Number(v).toFixed(coin === "XMR" ? 9 : 6)); }
+let tpSyncing = false;
+function tpSync(driver) {
+  if (tpSyncing || !swSelected) return;
+  const price = Number(swSelected.intent.price_e9) / 1e9; if (!(price > 0)) return;   // XMR per XNO, from the offer
+  const co = tpCoins();
+  tpSyncing = true;
+  try {
+    if (driver === "get") {
+      const g = parseFloat((($("tpGet") && $("tpGet").value) || "").trim());
+      // get is the BOUGHT coin → back-compute the SOLD (pay) amount at the offer price
+      if (isFinite(g) && g > 0) $("tpAmount").value = tpFmtAmt(swSide === "xno" ? g / price : g * price, co.pay);
+      else { $("tpAmount").value = ""; }
+    }
+    // Source of truth: the sold amount → the real deal → the exact bought amount.
+    const deal = tpDealFromInput();
+    if (deal && !deal.tooBig && !deal.tooSmall && !deal.unviable) {
+      const getVal = swSide === "xno" ? Number(deal.xmrAtomic) / 1e12 : Number(deal.xnoRaw) / 1e30;
+      if ($("tpGet")) $("tpGet").value = tpFmtAmt(getVal, co.get);
+    } else if (driver === "pay" && $("tpGet")) { $("tpGet").value = ""; }
+  } finally { tpSyncing = false; }
+}
+function tpCoinLabels() { const co = tpCoins(); if ($("tpPayCoin")) $("tpPayCoin").textContent = co.pay; if ($("tpGetCoin")) $("tpGetCoin").textContent = co.get; }
 // Guided deposit: the wallet lacks enough XNO to fund the swap, so show its
 // address + the amount needed and watch the balance live. liveReceive (a Nano
 // websocket started on unlock) auto-pockets any incoming XNO and validates it
@@ -3146,6 +3185,7 @@ function tpQuoteRender() {
   $("tpAmount").placeholder = swSide === "xmr" ? "amount of XMR to sell" : "amount of XNO to sell";
   { const i = tpDestInfo(); if ($("tpDest")) $("tpDest").placeholder = i.ph;
     if ($("tpDestNote")) $("tpDestNote").textContent = "Your " + i.coin + " is sent straight to this external address — it never stays in this page's wallet."; }
+  tpCoinLabels();
   tpResetReview();
   tpBtnSync();
   if (!swSelected) { q.textContent = "Pick a live offer above to get a quote."; return; }
@@ -3159,7 +3199,8 @@ function tpQuoteRender() {
   const price = (Number(d.priceE9) / 1e9).toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
   q.textContent = "You pay " + pay + " · you get " + get + " · at " + price + " XMR/XNO" + swFairness(Number(d.priceE9), d.side);
 }
-$("tpAmount").addEventListener("input", tpQuoteRender);
+$("tpAmount").addEventListener("input", () => { tpSync("pay"); tpQuoteRender(); });
+if ($("tpGet")) $("tpGet").addEventListener("input", () => { tpSync("get"); tpQuoteRender(); });
 if ($("tpTake")) $("tpTake").onclick = async () => {
   if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first."); appView("wallet"); return; }
   if (!swSelected) { tpLog("Pick a live offer above first."); return; }
