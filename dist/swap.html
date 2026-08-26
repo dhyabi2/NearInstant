@@ -4,6 +4,55 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NearInstant.xyz · trustless XNO ⇄ XMR</title>
+<meta name="description" content="Trustless, non-custodial Nano (XNO) ⇄ Monero (XMR) atomic-swap DEX that runs entirely in your browser. No custody, no account, no backend — cryptography enforces the swap.">
+<meta name="keywords" content="Nano, XNO, Monero, XMR, atomic swap, DEX, non-custodial, trustless, crypto swap, adaptor signature, FROST, decentralized exchange, cross-chain">
+<meta name="author" content="NearInstant">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#1FA2FF">
+<link rel="canonical" href="https://www.nearinstant.xyz/">
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="application-name" content="NearInstant">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="NearInstant">
+
+<!-- Icons (linked files for the hosted PWA; inline data-URI for offline/IPFS/file://) -->
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http://www.w3.org/2000/svg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20rx%3D%2714%27%20fill%3D%27%23fff%27/%3E%3Ccircle%20cx%3D%2732%27%20cy%3D%2732%27%20r%3D%2728%27%20fill%3D%27none%27%20stroke%3D%27%23173a86%27%20stroke-width%3D%272%27/%3E%3Cpath%20d%3D%27M35%207%20L16%2035%20H28.5%20L26%2057%20L48%2026%20H34%20Z%27%20fill%3D%27%231FA2FF%27%20stroke%3D%27%23FF6600%27%20stroke-width%3D%272.6%27%20stroke-linejoin%3D%27round%27%20stroke-linecap%3D%27round%27/%3E%3C/svg%3E">
+
+<!-- Open Graph (link previews: Slack, Discord, Telegram, Facebook, LinkedIn) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NearInstant">
+<meta property="og:title" content="NearInstant — trustless XNO ⇄ XMR swaps">
+<meta property="og:description" content="Trustless, non-custodial Nano (XNO) ⇄ Monero (XMR) atomic-swap DEX that runs entirely in your browser. No custody, no account, no backend — cryptography enforces the swap.">
+<meta property="og:url" content="https://www.nearinstant.xyz/">
+<meta property="og:image" content="https://www.nearinstant.xyz/og-image.png">
+<meta property="og:image:secure_url" content="https://www.nearinstant.xyz/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NearInstant — trustless XNO to XMR atomic swaps in your browser">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter / X card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NearInstant — trustless XNO ⇄ XMR swaps">
+<meta name="twitter:description" content="Trustless, non-custodial Nano (XNO) ⇄ Monero (XMR) atomic-swap DEX that runs entirely in your browser. No custody, no account, no backend — cryptography enforces the swap.">
+<meta name="twitter:image" content="https://www.nearinstant.xyz/og-image.png">
+<meta name="twitter:image:alt" content="NearInstant — trustless XNO to XMR atomic swaps in your browser">
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"NearInstant","url":"https://www.nearinstant.xyz/","description":"Trustless, non-custodial Nano (XNO) ⇄ Monero (XMR) atomic-swap DEX that runs entirely in your browser. No custody, no account, no backend — cryptography enforces the swap.","applicationCategory":"FinanceApplication","operatingSystem":"Any (web browser)","browserRequirements":"Requires JavaScript and WebAssembly","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true,"author":{"@type":"Organization","name":"NearInstant","url":"https://www.nearinstant.xyz/"}}
+</script>
 <style>
   :root{
     --sky1:#bfe3ff; --sky2:#d3ecff; --sky3:#e6f4ff;
@@ -31,6 +80,13 @@
 
   /* ---- top bar ---- */
   .top{display:flex;align-items:center;justify-content:space-between;padding:1.1rem 0 .4rem}
+  .installbtn{display:inline-flex;align-items:center;gap:.4rem;font-family:inherit;font-weight:800;font-size:.78rem;
+    letter-spacing:.01em;padding:.42rem .7rem;border:2px solid var(--ink);background:#fff;color:var(--ink);
+    cursor:pointer;box-shadow:3px 3px 0 var(--ink);transition:transform .08s ease,box-shadow .08s ease}
+  .installbtn:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
+  .installbtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+  .installbtn[hidden]{display:none}
+  .installbtn .ic{stroke:currentColor;fill:none;stroke-width:2.2}
   .brand{display:flex;align-items:center;gap:.55rem;font-weight:800;letter-spacing:-.02em;font-size:1.3rem}
   .brand svg{display:block}
 
@@ -239,6 +295,20 @@
   .o-badge.off{color:#b3261e}
   .o-badge.fair{color:var(--muted)}
   .ocard.on .o-badge{color:#fff;border-color:#fff}
+  /* elegant empty / recent-activity state for the order book */
+  .oempty{border:2px solid var(--ink);background:#fff;box-shadow:4px 4px 0 var(--ink);padding:1rem 1.05rem}
+  .oempty h4{font-size:1rem;font-weight:850;letter-spacing:-.01em;margin:0 0 .2rem;display:flex;align-items:center;gap:.45rem}
+  .oempty h4 .dot{width:.6rem;height:.6rem;border:2px solid var(--ink);background:#e6e6e6;border-radius:50%;flex:0 0 auto}
+  .oempty .esub{font-size:.8rem;color:var(--muted);font-weight:600;line-height:1.4}
+  .oempty .erlabel{font-size:.64rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:.85rem 0 .1rem}
+  .orow{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.5rem 0;border-top:1.5px dashed #dcdcdc}
+  .orow .ol{min-width:0}
+  .orow .op{font-family:ui-monospace,monospace;font-weight:800;font-size:.92rem;font-variant-numeric:tabular-nums}
+  .orow .os{font-size:.7rem;color:var(--faint);font-variant-numeric:tabular-nums;margin-top:.05rem}
+  .orow .oe{font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;
+    color:#8a5a00;background:#fff6e8;border:1.5px solid #e6b25c;padding:.16rem .42rem;flex:0 0 auto}
+  .oempty .ecta{margin-top:.9rem;font-size:.8rem;font-weight:750;color:var(--ink);border-top:2px solid var(--ink);padding-top:.7rem}
+  .oempty .ecta b{color:var(--burnt)}
   .rm:hover{color:var(--burnt)}
   .add{display:flex;gap:.4rem;margin-top:.4rem}
   .add input{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:.72rem;padding:.4rem .5rem;border:2px solid var(--ink);background:#fff}
@@ -298,6 +368,10 @@
         </svg>
         <span>NearInstant<span style="color:#2a56cc">.xyz</span></span>
       </div>
+      <button id="installBtn" class="installbtn" hidden aria-label="Install NearInstant as an app">
+        <svg class="ic" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>
+        <span>Install app</span>
+      </button>
     </div>
 
     <div class="hero">
@@ -1139,7 +1213,7 @@ async function priceCoingecko() {
   const j = await fetchJson("https://api.coingecko.com/api/v3/simple/price?ids=nano,monero&vs_currencies=usd");
   const xno = j && j.nano && j.nano.usd, xmr = j && j.monero && j.monero.usd;
   if (!(xno > 0) || !(xmr > 0)) throw new Error("bad coingecko");
-  return xno / xmr;                       // XMR per 1 XNO
+  return { ratio: xno / xmr, xnoUsd: xno, xmrUsd: xmr };   // XMR per 1 XNO + USD legs
 }
 async function priceCoinpaprika() {
   const [a, b] = await Promise.all([
@@ -1149,7 +1223,7 @@ async function priceCoinpaprika() {
   const xno = a && a.quotes && a.quotes.USD && a.quotes.USD.price;
   const xmr = b && b.quotes && b.quotes.USD && b.quotes.USD.price;
   if (!(xno > 0) || !(xmr > 0)) throw new Error("bad coinpaprika");
-  return xno / xmr;
+  return { ratio: xno / xmr, xnoUsd: xno, xmrUsd: xmr };
 }
 // FAIL-CLOSED: returns {ok:true, mid, sources} only when trustworthy. With ≥2
 // live sources they must agree within AGREE_TOL (spread across them), else we
@@ -1238,10 +1312,18 @@ async function marketPrice() {
   return res;
 }
 async function marketPriceUncached() {
-  const got = [];
+  const got = [], xnoUsds = [], xmrUsds = [];
   for (const f of [priceCoingecko, priceCoinpaprika]) {
-    try { const p = await f(); if (p > SMART.SANE_MIN && p < SMART.SANE_MAX) got.push(p); } catch (e) {}
+    try {
+      const r = await f(); const p = r.ratio;
+      if (p > SMART.SANE_MIN && p < SMART.SANE_MAX) {
+        got.push(p);
+        if (r.xnoUsd > 0) xnoUsds.push(r.xnoUsd);
+        if (r.xmrUsd > 0) xmrUsds.push(r.xmrUsd);
+      }
+    } catch (e) {}
   }
+  const avg = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
   // FAIL-CLOSED: require at least TWO independent sources that AGREE — never
   // post an offer on a single unvalidated feed (a lone stale/manipulated price
   // would otherwise set your quote).
@@ -1258,7 +1340,8 @@ async function marketPriceUncached() {
   const hist = phLoad();
   const st = pumpStress(mid, hist, now);
   hist.push({ p: mid, at: now }); phSave(hist);
-  return { ok: true, mid, sources: got.length, stress: st.mult, stressWhy: st.why };
+  return { ok: true, mid, sources: got.length, stress: st.mult, stressWhy: st.why,
+           xnoUsd: avg(xnoUsds), xmrUsd: avg(xmrUsds) };
 }
 
 let smartTimer = null, smartState = null;
@@ -1471,12 +1554,16 @@ async function smartTick() {
   // Offer up to the vol-scaled fraction of the balance. No upper cap.
   const size = Math.max(0, bal * sizeFracFor(bps));
   const priceStr = ask.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
+  if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd;               // keep the taker book's $ in sync
+  const offUsd = coin === "xno" ? (pr.xnoUsd > 0 ? size * pr.xnoUsd : 0) : (pr.xmrUsd > 0 ? size * pr.xmrUsd : 0);
+  const offStr = size > 0 ? ((coin === "xno" ? size.toFixed(2) + " XNO" : size.toFixed(6) + " XMR")
+                             + (offUsd > 0 ? "  ·  ≈ " + fmtUsd(offUsd) : "")) : "—";
   const rows = [
     ["Market (mid)", mid.toFixed(6) + " XMR/XNO"],
     ["Your ask", priceStr + " XMR/XNO", "live"],
     ["Your spread", (bps / 100).toFixed(2) + "% · volatility " + (sigD * 100).toFixed(1) + "%/day"
       + (pr.stress > 1 ? " · widened, " + pr.stressWhy : ""), pr.stress > 1 ? "warn" : "live"],
-    ["Offering", size > 0 ? (coin === "xno" ? size.toFixed(2) + " XNO" : size.toFixed(6) + " XMR") : "—"],
+    ["Offering", offStr],
     ["Fills", String(smartState.fills)],
     ["Price sources", pr.sources + " ✓", "live"],
   ];
@@ -2084,6 +2171,16 @@ let swSelected = null, swOffersAt = 0;
 const SW_WORSE_BAND = 0.03;   // >3% worse than market for the taker ⇒ excluded
 const SW_BETTER_BAND = 0.25;  // better than market is welcome, up to 25% (sanity)
 let swLastMid = null;
+let swXnoUsd = null;   // live USD price of 1 XNO, from the same 2-source oracle
+// Human dollar figure: cents under $100, whole dollars under $1k, then $1.2k.
+function fmtUsd(v) {
+  if (!(v > 0)) return "";
+  if (v >= 1000) return "$" + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + "k";
+  if (v >= 100) return "$" + Math.round(v);
+  return "$" + v.toFixed(2);
+}
+// "≈ $X" for an XNO amount, only when a trustworthy USD price is loaded.
+function swUsdOf(xno) { return (swXnoUsd > 0 && xno > 0) ? "  ·  ≈ " + fmtUsd(xno * swXnoUsd) : ""; }
 // Signed deviation from the taker's point of view: positive = worse for them.
 // Price is XMR-per-XNO. side 0 the taker PAYS price (higher = worse); side 1
 // the taker RECEIVES price (lower = worse).
@@ -2114,7 +2211,81 @@ function swSelRender(o) {
   if (!o) { sel.classList.add("hidden"); return; }
   sel.classList.remove("hidden");
   const price = (o.intent.price_e9 / 1e9).toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
-  sel.textContent = "Selected · " + price + " XMR/XNO" + (o.maker ? " · " + String(o.maker).slice(0, 14) + "…" : "") + swFairness(o.intent.price_e9, o.intent.side);
+  const usdUnit = swXnoUsd > 0 ? " · ≈ " + fmtUsd(swXnoUsd) + "/XNO" : "";
+  sel.textContent = "Selected · " + price + " XMR/XNO" + usdUnit + (o.maker ? " · " + String(o.maker).slice(0, 14) + "…" : "") + swFairness(o.intent.price_e9, o.intent.side);
+}
+// ---- order-book helpers (shared by the live list and the empty state) ----
+// size_log2 is a coarse power-of-two encoding of the raw amount; decode back to
+// an approximate XNO figure for display (1 XNO = 1e30 raw).
+function swSizeXno(size_log2) { return Math.pow(2, size_log2 - Math.log2(1e30)); }
+// Consistent with the ≈$ figure: show a decimal under 10 (the log2 size decode
+// is ~1.3 for a "1 XNO" post, so a bare "1 XNO ≈ $0.51" looked mismatched).
+function swFmtXno(x) { return x >= 100 ? Math.round(x).toLocaleString() : x >= 10 ? String(Math.round(x)) : x.toFixed(1); }
+function swPriceStr(price_e9) { return (price_e9 / 1e9).toFixed(9).replace(/0+$/, "").replace(/\.$/, ""); }
+function swAgo(sec) {
+  if (sec == null) return "unknown time";
+  if (sec < 90) return "moments ago";
+  if (sec < 3600) return Math.round(sec / 60) + "m ago";
+  if (sec < 86400) return Math.round(sec / 3600) + "h ago";
+  return Math.round(sec / 86400) + "d ago";
+}
+// Elegant empty / recent-activity panel. Shown when a side has no LIVE offer.
+// If there are stale posts, it surfaces the most recent real offer per maker
+// (decoded price + amount + age) so the market reads as quiet, not broken.
+async function swRenderEmpty(box, raw, side) {
+  box.className = ""; box.innerHTML = "";
+  try { const pr = await marketPrice(); if (pr && pr.ok && pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; } catch (e) {}
+  const wrap = document.createElement("div"); wrap.className = "oempty";
+  const h = document.createElement("h4");
+  const dot = document.createElement("span"); dot.className = "dot"; h.append(dot);
+  h.append(document.createTextNode(raw.length ? "No live offers right now" : "No offers on this side yet"));
+  wrap.append(h);
+  const sub = document.createElement("div"); sub.className = "esub";
+  sub.textContent = raw.length
+    ? "Offers stay live for 10 minutes, then expire until the maker re-posts — so a quiet moment looks empty even when the side has real history."
+    : "Be the first to provide liquidity here. Open Earn → Smart Offer to post one; it becomes takeable immediately.";
+  wrap.append(sub);
+
+  if (raw.length) {
+    let meta = {};
+    try {
+      const j = await expBeacon._internals.rpc(rpcState.nano, { action: "blocks_info", json_block: "true", hashes: raw.map(r => r.blockHash) });
+      const b = j && j.blocks ? j.blocks : {};
+      for (const k of Object.keys(b)) meta[k] = { height: parseInt(b[k].height || "0", 10) || 0, ts: parseInt(b[k].local_timestamp || "0", 10) || 0 };
+    } catch (e) {}
+    const isCancel = (r) => !r.intent || r.intent.price_e9 === 0;
+    for (const r of raw) { const m = meta[r.blockHash] || {}; r.height = m.height || 0; r.ts = m.ts || 0; }
+    const byMaker = new Map();                                  // latest REAL offer per maker (ignore later withdraws)
+    for (const r of raw) {
+      if (isCancel(r)) continue;
+      const cur = byMaker.get(r.maker);
+      if (!cur || r.height > cur.height) byMaker.set(r.maker, r);
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const recent = [...byMaker.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 4);
+    if (recent.length) {
+      const lab = document.createElement("div"); lab.className = "erlabel";
+      lab.textContent = "Recent offers · " + (side === 0 ? "XNO for sale" : "XMR for sale");
+      wrap.append(lab);
+      recent.forEach(r => {
+        const row = document.createElement("div"); row.className = "orow";
+        const l = document.createElement("div"); l.className = "ol";
+        const op = document.createElement("div"); op.className = "op"; op.textContent = swPriceStr(r.intent.price_e9) + " XMR/XNO"; l.append(op);
+        const os = document.createElement("div"); os.className = "os";
+        const sz = swSizeXno(r.intent.size_log2);
+        os.textContent = "~" + swFmtXno(sz) + " XNO" + swUsdOf(sz) + "  ·  " + swAgo(r.ts ? now - r.ts : null);
+        l.append(os); row.append(l);
+        const oe = document.createElement("div"); oe.className = "oe"; oe.textContent = "expired"; row.append(oe);
+        wrap.append(row);
+      });
+    }
+  }
+  const cta = document.createElement("div"); cta.className = "ecta";
+  if (raw.length) cta.append(document.createTextNode("Want to trade now? "));
+  const b2 = document.createElement("b"); b2.textContent = "Post a fresh offer from Earn → Smart Offer"; cta.append(b2);
+  cta.append(document.createTextNode(" — it goes live instantly, for 10 minutes."));
+  wrap.append(cta);
+  box.append(wrap);
 }
 async function swOffersRefresh(force) {
   const box = $("swOffers"); if (!box) return;
@@ -2133,15 +2304,14 @@ async function swOffersRefresh(force) {
     const offers = await expBeacon.scanLive(rpcState.nano, "XNO/XMR", swWantSide(), OFFER_TTL_SECS);
     box.innerHTML = "";
     if (!offers.length) {
-      box.textContent = raw.length
-        ? "scan: " + raw.length + " raw post(s), 0 live after lifecycle (superseded/cancelled/expired)"
-        : "scan: 0 posts on this side — be the first from Earn → Smart Offer.";
-      swSelected = null; swSelRender(null); return;
+      swSelected = null; swSelRender(null);
+      await swRenderEmpty(box, raw, swWantSide());
+      return;
     }
     // Fail-closed market mid for the taker-side sanity guard (best-effort: the
     // list still shows if the price feed is unavailable, just without fairness).
     swLastMid = null;
-    try { const pr = await marketPrice(); if (pr && pr.ok) swLastMid = pr.mid; } catch (e) {}
+    try { const pr = await marketPrice(); if (pr && pr.ok) { swLastMid = pr.mid; if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; } } catch (e) {}
     box.className = "olist";
     const inBand = (o) => swInBand(o);
     const mk = (cls, txt) => { const e = document.createElement("div"); e.className = cls; if (txt != null) e.textContent = txt; return e; };
@@ -2157,9 +2327,9 @@ async function swOffersRefresh(force) {
       const main = mk("o-main");
       const p = mk("o-price", price + " "); const unit = mk("o-unit", "XMR / XNO"); unit.style.display = "inline";
       p.append(unit); main.append(p);
-      const sizeStr = "~" + (sizeXno >= 1 ? Math.round(sizeXno).toLocaleString() : sizeXno.toPrecision(2)) + " XNO available";
+      const sizeStr = "~" + swFmtXno(sizeXno) + " XNO available";
       const devStr = dev != null ? "  ·  " + (Math.abs(dev) < 0.005 ? "at market" : (Math.abs(dev * 100).toFixed(1) + "% " + (dev < 0 ? "better" : "worse"))) : "";
-      main.append(mk("o-sub", sizeStr + devStr));
+      main.append(mk("o-sub", sizeStr + swUsdOf(sizeXno) + devStr));
       card.append(main);
 
       const right = mk("o-right");
@@ -2870,6 +3040,54 @@ tpSessionsRender();
 tpQuoteRender();
 
 walletShell();
+</script>
+<script>
+/* PWA: service worker + install prompt. Progressive enhancement only —
+   the app runs identically without any of this (and offline as a saved file). */
+(function () {
+  // register the service worker (secure context only: https or localhost)
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    });
+  }
+  var btn = document.getElementById("installBtn");
+  if (!btn) return;
+  var deferred = null;
+  var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+  // Chromium/Android/desktop: capture the native prompt and offer our button
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferred = e;
+    if (!standalone) btn.hidden = false;
+  });
+  window.addEventListener("appinstalled", function () { btn.hidden = true; deferred = null; });
+
+  // iOS Safari has no beforeinstallprompt — show an inline hint instead
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS && !standalone) btn.hidden = false;
+
+  btn.addEventListener("click", function () {
+    if (deferred) {
+      deferred.prompt();
+      deferred.userChoice.finally(function () { deferred = null; btn.hidden = true; });
+      return;
+    }
+    if (isIOS) {
+      var note = document.getElementById("iosInstallHint");
+      if (!note) {
+        note = document.createElement("div");
+        note.id = "iosInstallHint";
+        note.setAttribute("role", "status");
+        note.style.cssText = "position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:9999;max-width:22rem;width:calc(100% - 2rem);background:#fff;color:#0b0b0b;border:2px solid #0b0b0b;box-shadow:4px 4px 0 #0b0b0b;padding:.7rem .85rem;font:800 .82rem/1.35 ui-sans-serif,-apple-system,sans-serif;text-align:center";
+        note.innerHTML = "To install: tap the <b>Share</b> button, then <b>Add to Home Screen</b>. <span style='cursor:pointer;text-decoration:underline'>Dismiss</span>";
+        note.querySelector("span").addEventListener("click", function () { note.remove(); });
+        document.body.appendChild(note);
+      }
+    }
+  });
+})();
 </script>
 </body>
 </html>
