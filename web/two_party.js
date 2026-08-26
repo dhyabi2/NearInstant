@@ -782,8 +782,11 @@
       const { hit } = await waitJointXmrLock(deps, party, deal.xmrAtomic, (S.get("lockseen") || {}).block || 0);
       const jointSecret = deps.xmr.xmr_joint_secret(party.ctx, party.myXmrShare, hb(S.get("x").x));
       const node = await deps.xmr.XmrNode.connect(deps.moneroPost);
-      const myXmr = await deps.walletApi.xmrAddress();
-      deps.note("Monero: building the sweep to your wallet (ring signature with real decoys + fee)…");
+      // Sweep the claimed XMR to the taker's chosen destination (an external
+      // wallet). Falls back to the in-browser wallet address only if no
+      // destination was provided.
+      const myXmr = deps.xmrDest || await deps.walletApi.xmrAddress();
+      deps.note("Monero: building the sweep to " + (deps.xmrDest ? "your destination address" : "your wallet") + " (ring signature with real decoys + fee)…");
       const signed = JSON.parse(await node.sweep_sign(hit.output, hit.block, jointSecret, myXmr, "mainnet"));
       deps.note("Monero: broadcasting the sweep…");
       const tx = await node.publish(signed.tx);
