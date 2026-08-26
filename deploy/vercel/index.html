@@ -1687,6 +1687,7 @@ function appView(v) {
   if (strip) strip.classList.toggle("hidden", aux);
   if (v === "settings" && typeof settingsRenderOnce === "function") settingsRenderOnce();
   if (v === "swap" && typeof swOffersRefresh === "function") swOffersRefresh();
+  if (typeof bookLiquidityRefresh === "function") bookLiquidityRefresh();
 }
 $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b.dataset.v));
 
@@ -2312,6 +2313,36 @@ async function swRenderEmpty(box, raw, side) {
   wrap.append(cta);
   box.append(wrap);
 }
+// Live-book liquidity total, shown under the machine (the "liquidity pools"
+// drawing). Independent of the local wallet: it sums the LIVE offers on both
+// sides so the amount/total shows even when the wallet is locked or the offers
+// are being run by the agent. side 0 = XNO for sale; side 1 = XMR for sale
+// (size is in XNO, so XMR = size×price).
+let __bookLiqAt = 0;
+async function bookLiquidityRefresh(force) {
+  const el = $("machineQuiet"); if (!el) return;
+  if (!force && Date.now() - __bookLiqAt < 30000) return;
+  __bookLiqAt = Date.now();
+  try {
+    await expInit();
+    if (!expBeacon || typeof expBeacon.scanLive !== "function") return;
+    const [s0, s1] = await Promise.all([
+      expBeacon.scanLive(rpcState.nano, "XNO/XMR", 0, OFFER_TTL_SECS),
+      expBeacon.scanLive(rpcState.nano, "XNO/XMR", 1, OFFER_TTL_SECS),
+    ]);
+    try { const pr = await marketPrice(); if (pr && pr.ok) { if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; if (pr.xmrUsd > 0) swXmrUsd = pr.xmrUsd; } } catch (e) {}
+    const xnoForSale = s0.reduce((a, o) => a + swSizeXno(o.intent.size_log2), 0);
+    const xmrForSale = s1.reduce((a, o) => a + swSizeXno(o.intent.size_log2) * (o.intent.price_e9 / 1e9), 0);
+    const usd0 = swXnoUsd > 0 ? xnoForSale * swXnoUsd : 0;
+    const usd1 = swXmrUsd > 0 ? xmrForSale * swXmrUsd : 0;
+    const total = usd0 + usd1;
+    if (!s0.length && !s1.length) { el.textContent = "Book is quiet — no live offers right now"; return; }
+    const parts = [];
+    if (s0.length) parts.push(swFmtXno(xnoForSale) + " XNO for sale" + (usd0 ? " (≈ " + fmtUsd(usd0) + ")" : ""));
+    if (s1.length) parts.push((xmrForSale >= 1 ? xmrForSale.toFixed(2) : xmrForSale.toPrecision(2)) + " XMR for sale" + (usd1 ? " (≈ " + fmtUsd(usd1) + ")" : ""));
+    el.textContent = "Live liquidity · " + parts.join("  +  ") + (total > 0 ? "  ·  total ≈ " + fmtUsd(total) : "");
+  } catch (e) { /* engine not loaded (single-file mode) — leave the caption empty */ }
+}
 async function swOffersRefresh(force) {
   const box = $("swOffers"); if (!box) return;
   if (!force && Date.now() - swOffersAt < 12000) return;   // debounce auto calls
@@ -2385,6 +2416,12 @@ async function swOffersRefresh(force) {
 }
 $("swOffersRef").onclick = () => swOffersRefresh(true);
 if ($("viewSwap") && !$("viewSwap").classList.contains("hidden")) swOffersRefresh(true);
+// The liquidity-pools caption reflects the LIVE book on every view (the machine
+// is the page's centrepiece), refreshed on load, on a timer, and on manual
+// book refresh — so the amount/total shows even with the wallet locked.
+$("swOffersRef").addEventListener("click", () => bookLiquidityRefresh(true));
+setTimeout(() => bookLiquidityRefresh(true), 1200);
+setInterval(() => bookLiquidityRefresh(), 45000);
 
 /* ---- stark monochrome progress ticker ---- */
 // Step labels adapt to the chosen direction; "◀ you receive" marks your payout.
