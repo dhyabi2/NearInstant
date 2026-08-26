@@ -1,7 +1,7 @@
 ---
 name: xno-xmr-dex
 description: Run a certified-win market-making loop on the trustless XNO⇄XMR DEX — quote, post, monitor, detect and certify takes, decline losers, and optionally settle. Settlement is off by default and hands each certified take to a human; enable it deliberately.
-version: 0.2.0
+version: 0.3.0
 author: NearInstant
 license: MIT
 platforms: [linux, macos]
@@ -26,10 +26,12 @@ Every command prints one JSON object. Non-zero exit = refused or failed.
 From the repo root, `node integrations/hermes/scripts/xnoxmr.cjs <cmd>`:
 
 1. `health` — nano quorum, price oracles, PoW proxy, maker wallet. Must be `ok:true`.
-2. `quote --side 1` and `book --side 1` — the spread, the minimum viable fill, live offers.
-3. `verify --side 1 --xno 50` then `verify --side 1 --xno 10` — first CERTIFIES, second REFUSES (the fee makes a small fill a loss). This is the profit engine.
-4. `offer post --side 1 --size 50 --live` — publish a real offer; then `status`/`peek` to monitor; `offer withdraw --side 1 --live` when done.
-5. `tick --side 1 --live` — one iteration of the maker loop.
+2. `quote --side 0` and `book --side 0` — the spread, the minimum viable fill, live offers.
+3. `verify --side 0 --xno 50` then `verify --side 0 --xno 10` — first CERTIFIES, second REFUSES (the fee makes a small fill a loss). This is the profit engine.
+4. `offer post --side 0 --size 50 --live` — publish a real offer (side 0 = you sell XNO; the size is **capped to your XNO balance**). Then `status`/`peek` to monitor; `offer withdraw --side 0 --live` when done.
+5. `tick --side 0 --live` — one iteration of the maker loop.
+
+Use **side 0** to provide **XNO** liquidity (backed by your XNO balance). **Side 1 sells XMR** and refuses to post unless you declare fundable XMR with `--xmr <amount>` (or `XNOXMR_XMR_LIQUIDITY`) — see the honesty guard below.
 
 Keep `XNOXMR_AUTOSETTLE` unset (settlement off): a certified take is reported as a HANDOFF for a human, never settled autonomously until it has run on-chain under supervision.
 
@@ -94,7 +96,7 @@ or bypass a refusal.
 `tick` is one safe, idempotent iteration. Run it every 2–5 minutes:
 
 ```bash
-node <REPO>/integrations/hermes/scripts/xnoxmr.cjs tick --side 1 --live
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs tick --side 0 --live   # side 0 = sell XNO; side 1 needs --xmr
 ```
 
 Each tick:
@@ -152,7 +154,7 @@ robust default and needs nothing kept running.
 # pocket any incoming XNO every minute (funds land even with no offer resting)
 * * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs receive --live >> /tmp/xnoxmr-recv.log 2>&1
 # run one maker iteration every 3 min (also auto-receives, prices, posts, declines, hands off)
-*/3 * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs tick --side 1 --live >> /tmp/xnoxmr-tick.log 2>&1
+*/3 * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs tick --side 0 --live >> /tmp/xnoxmr-tick.log 2>&1
 ```
 
 ## Commands
