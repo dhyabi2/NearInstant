@@ -174,9 +174,26 @@ async function fundableXno(seed, side, ask, args) {
       return { xno: Number(BigInt(j.balance || "0") / (10n ** 24n)) / 1e6 };
     } catch (e) { return { xno: null, reason: "could not read the wallet's XNO balance to size the offer" }; }
   }
-  const xmr = declaredXmr(args);
-  if (!(xmr > 0)) return { xno: null, reason: "side 1 sells XMR: declare the XMR you can fund with --xmr <amount> (or XNOXMR_XMR_LIQUIDITY) so the offer is backed — refusing to advertise XMR the wallet may not hold" };
-  return { xno: ask > 0 ? xmr / ask : null, declaredXmr: xmr };
+  // side 1 sells XMR: cap to VERIFIED on-chain spendable XMR (read-only, fast).
+  // Never advertise XMR the wallet cannot actually deliver. A --xmr declaration
+  // can only LOWER the cap, never raise it above what the chain confirms.
+  let spendableXmr = null, note = null, behind = 0;
+  try {
+    const bal = await walletFor(seed).xmrRefresh(() => {}, { readOnly: true });
+    spendableXmr = parseFloat(bal.spendable); behind = bal.behind || 0;
+    if (!bal.caughtUp) note = "xmr scan " + behind + " blocks behind — spendable may be understated; run `xmr scan`";
+  } catch (e) { note = "could not read XMR balance (" + String(e.message || e).slice(0, 60) + ")"; }
+  const declared = declaredXmr(args);
+  let xmr;
+  if (spendableXmr != null) {
+    xmr = declared != null ? Math.min(declared, spendableXmr) : spendableXmr;   // truth caps; declaration can only lower
+  } else if (declared != null) {
+    xmr = declared; note = (note ? note + "; " : "") + "trusting --xmr (unverified — no Monero node/scan)";
+  } else {
+    return { xno: null, reason: "side 1 sells XMR: no spendable XMR found and none declared. Set XNOXMR_MONERO_NODES + run `xmr scan`, or declare --xmr <amount>." };
+  }
+  if (!(xmr > 0)) return { xno: null, reason: "side 1: no spendable XMR to back an offer (spendable " + (spendableXmr != null ? spendableXmr.toFixed(6) : "unknown") + " XMR" + (behind ? ", scan " + behind + " blocks behind — run `xmr scan`" : "") + ")" };
+  return { xno: ask > 0 ? xmr / ask : null, xmrCap: xmr, spendableXmr, note };
 }
 // The wire carries size as size_log2 — a power-of-two EXPONENT (8 bits), so the
 // size a taker decodes is quantised DOWN to 2^size_log2. Snap a requested size
@@ -231,8 +248,44 @@ CMDS.health = async () => {
               receivable: Number(BigInt(j.receivable || j.pending || "0") / (10n ** 24n)) / 1e6 }; } catch (e) {}
     r.checks.maker_wallet = { address: acct.address, balance: bal };
   } else r.checks.maker_wallet = { configured: false, note: "set XNOXMR_MAKER_SEED or WALLET_A_SEED in .env" };
+  // Monero side (read-only, fast): balance + scan state + node reachability. A
+  // side-1 (sell XMR) maker must be able to preflight the asset it is selling.
+  if (seed && MONERO_NODES.length) {
+    try {
+      const bal = await walletFor(seed).xmrRefresh(() => {}, { readOnly: true });
+      r.checks.maker_xmr = { total: bal.total, spendable: bal.spendable, tip: bal.tip,
+        blocks_behind: bal.behind, caught_up: bal.caughtUp, nodes: MONERO_NODES.length,
+        hint: bal.caughtUp ? undefined : "run `xmr scan` to catch up before posting side-1 offers" };
+    } catch (e) { r.checks.maker_xmr = { ok: false, error: String(e.message || e).slice(0, 100),
+        note: "Monero nodes unreachable — side-1 (sell XMR) offers cannot be verified" }; }
+  } else if (seed) {
+    r.checks.maker_xmr = { configured: false, note: "no XNOXMR_MONERO_NODES set — side-1 (sell XMR) offers cannot be verified" };
+  }
   r.ok = r.checks.nano_quorum_ok && r.checks.price.ok && r.checks.pow.ok;
   out(r);
+};
+
+// xmr: read-only balance, or a BOUNDED chain scan to catch up (Monero has no
+// balance RPC — outputs must be scanned; the first scan of a fresh wallet is
+// slow, so bound it with --max-blocks and run it on a cron to stay current).
+CMDS.xmr = async (args) => {
+  const seed = makerSeed(); if (!seed) return die("no maker wallet configured");
+  if (!MONERO_NODES.length) return die("no XNOXMR_MONERO_NODES configured");
+  const action = args._[1] || "balance";
+  if (action === "balance") {
+    const bal = await walletFor(seed).xmrRefresh(() => {}, { readOnly: true });
+    return out({ ok: true, action: "balance", total: bal.total, spendable: bal.spendable,
+      tip: bal.tip, blocks_behind: bal.behind, caught_up: bal.caughtUp });
+  }
+  if (action === "scan") {
+    const maxBlocks = args["max-blocks"] ? parseInt(args["max-blocks"], 10) : 20000;
+    const maxChunks = Math.max(1, Math.ceil(maxBlocks / 20));
+    let last = null;
+    const bal = await walletFor(seed).xmrRefresh((m) => { last = m; }, { maxChunks });
+    return out({ ok: true, action: "scan", tip: bal.tip, blocks_behind: bal.behind,
+      caught_up: bal.caughtUp, total: bal.total, spendable: bal.spendable, progress: last });
+  }
+  return die("usage: xmr balance | xmr scan [--max-blocks N]");
 };
 
 CMDS.book = async (args) => {
@@ -587,6 +640,8 @@ CMDS.help = async () => out({
     receive: "[--live]   pocket any incoming (receivable) XNO; cron this so new funds land. Nano is pull-based.",
     decline: "--slot n [--reason text] --live   tell a taker we will not fill (they stop waiting)",
     tick: "[--side 0|1] [--size xno] [--xmr amt] [--live]   ONE safe iteration of the maker loop; offers CAPPED to fundable balance; cron this. Never settles.",
+    "xmr balance": "read-only spendable/total XMR + scan height (side-1 makers)",
+    "xmr scan": "[--max-blocks N]   advance the Monero scan to catch up (cron this for side 1)",
     settle: "REFUSED - explains why, and what to do instead",
   },
   env: { XNOXMR_MAKER_SEED: "maker wallet seed (else WALLET_A_SEED from .env)",

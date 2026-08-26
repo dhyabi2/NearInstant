@@ -131,6 +131,21 @@ function makeHeadlessWallet(opts) {
       throw new Error(lastErr);
     };
     const st = loadSt(addr);
+    // readOnly: one height call + the outputs already scanned, NO block scanning.
+    // Fast (sub-second) verified balance for sizing/health; understated only by
+    // outputs in the not-yet-scanned tail (safe — never overstates spendable).
+    if (o && o.readOnly) {
+      let tip = st.scannedTo || 0;
+      try { const r = await scan({ from: null }); tip = r.tip; } catch (e) {}
+      // A never-scanned wallet only ever scans the last LOOKBACK blocks, so
+      // report "behind" against that start, not against genesis (avoids a
+      // scary "3.7M blocks behind" on a fresh wallet).
+      const start = st.scannedTo != null ? st.scannedTo : Math.max(0, tip - LOOKBACK);
+      const spent0 = new Set(st.spent); let total0 = 0n, spend0 = 0n;
+      for (const out of st.outputs) { if (spent0.has(out.index)) continue; const a = BigInt(out.amount); total0 += a; if (tip - out.block >= XMR_UNLOCK) spend0 += a; }
+      return { total: fmtXmr(total0), spendable: fmtXmr(spend0), pending: total0 > spend0, tip, state: st,
+               caughtUp: start >= tip, behind: Math.max(0, tip - start), started: st.scannedTo != null, scanned: false };
+    }
     if (st.scannedTo == null) { const r = await scan({ from: null }); st.restore = Math.max(0, r.tip - LOOKBACK); st.scannedTo = st.restore; saveSt(addr, st); }
     let tip = st.scannedTo;
     const maxChunks = (o && o.maxChunks) || 5000;

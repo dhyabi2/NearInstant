@@ -148,6 +148,22 @@ subscription can wake a receive the moment a send confirms — optional, and it
 requires a persistent process rather than cron. Polling on a 1–2 min cron is the
 robust default and needs nothing kept running.
 
+## Side-1 makers: keep the Monero wallet scanned
+
+Monero has no balance RPC — outputs must be scanned, and the first scan of a
+fresh wallet covers ~4320 blocks (slow on public nodes). `health` reports
+`maker_xmr` (spendable, `blocks_behind`, `caught_up`); a side-1 offer refuses
+until the wallet is caught up. Catch it up once, then keep it current on a cron:
+
+```bash
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs xmr scan --max-blocks 20000   # once, to catch up
+```
+
+```cron
+# keep the Monero scan current (only side-1 / sell-XMR makers need this)
+*/5 * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs xmr scan --max-blocks 4000 >> /tmp/xnoxmr-xmr.log 2>&1
+```
+
 ## Cron: the whole unattended agent
 
 ```cron
@@ -186,10 +202,11 @@ balance** and refuse rather than over-advertise:
 
 - **Side 0 (you sell XNO):** capped to the wallet's spendable **XNO** balance
   (read on-chain each post). `--size` is a ceiling, not a guarantee.
-- **Side 1 (you sell XMR):** the maker must deliver XMR, and XMR balance is not
-  cheaply verifiable headlessly — so you must **declare** the XMR you can fund
-  with `--xmr <amount>` (or `XNOXMR_XMR_LIQUIDITY`). With none declared, the CLI
-  **refuses to post a side-1 offer** rather than advertise XMR it can't confirm.
+- **Side 1 (you sell XMR):** the offer is **capped to the wallet's on-chain
+  spendable XMR** (verified read-only via `xmr balance`). A `--xmr <amount>`
+  (or `XNOXMR_XMR_LIQUIDITY`) can only **lower** that cap, never raise it. Monero
+  has no balance RPC, so the wallet must be **scanned** first — run `xmr scan`
+  (see below); until it catches up, spendable is understated and side-1 refuses.
 
 The post output reports `requested_xno`, `fundable_xno`, and `capped_to_fundable`
 so you can see when a request was trimmed. The advertised size is also
