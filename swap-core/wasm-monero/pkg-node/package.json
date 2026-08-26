@@ -1,0 +1,12 @@
+{
+  "name": "wasm-monero",
+  "description": "Stage 5: the Monero swap leg (joint address, output scan, sweep build+sign) compiled for the browser, chain access supplied by JS fetch",
+  "version": "0.1.0",
+  "files": [
+    "wasm_monero_bg.wasm",
+    "wasm_monero.js",
+    "wasm_monero.d.ts"
+  ],
+  "main": "wasm_monero.js",
+  "types": "wasm_monero.d.ts"
+}

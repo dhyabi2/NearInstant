@@ -1,0 +1,444 @@
+<title>XNO⇄XMR Solutions Register</title>
+<style>
+  :root {
+    --paper: #fbfaf7; --ink: #21262e; --muted: #5c6570; --rule: #d9d6cd;
+    --card: #f2f0ea; --nano: #1a6fc4; --xmr: #c35a12;
+    --danger: #b03a3a; --danger-bg: #f7e9e7;
+    --ok: #2c6e49; --ok-bg: #e8f1ea;
+    --warn: #8a6d1f; --warn-bg: #f5eeda; --code-bg: #edeae2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #191c21; --ink: #dcd9d2; --muted: #949ba5; --rule: #333941;
+      --card: #21252c; --nano: #5da3e8; --xmr: #e88a45;
+      --danger: #e08585; --danger-bg: #33221f; --ok: #7dbb95; --ok-bg: #1e2c23;
+      --warn: #d3b35f; --warn-bg: #2d2817; --code-bg: #23272e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #191c21; --ink: #dcd9d2; --muted: #949ba5; --rule: #333941;
+    --card: #21252c; --nano: #5da3e8; --xmr: #e88a45;
+    --danger: #e08585; --danger-bg: #33221f; --ok: #7dbb95; --ok-bg: #1e2c23;
+    --warn: #d3b35f; --warn-bg: #2d2817; --code-bg: #23272e;
+  }
+  body { background: var(--paper); color: var(--ink); font-family: Charter, "Iowan Old Style", Georgia, serif; line-height: 1.55; margin: 0; padding: 3rem 1.25rem 5rem; }
+  main { max-width: 48rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; line-height: 1.2; text-wrap: balance; margin: 0 0 .4rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.2rem; margin: 2.4rem 0 .8rem; }
+  p { margin: .7rem 0; }
+  .eyebrow { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.2rem; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86em; background: var(--code-bg); padding: .1em .35em; border-radius: 3px; }
+  .issue { border: 1px solid var(--rule); border-radius: 6px; padding: 1rem 1.25rem; margin: 1.1rem 0; background: var(--card); }
+  .issue h3 { margin: 0 0 .5rem; font-size: 1rem; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
+  .tag { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; padding: .15em .55em; border-radius: 3px; white-space: nowrap; }
+  .settled { color: var(--ok); background: var(--ok-bg); }
+  .accepted { color: var(--warn); background: var(--warn-bg); }
+  .issue dl { margin: .4rem 0 0; }
+  .issue dt { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: .6rem; }
+  .issue dd { margin: .15rem 0 0; }
+  .stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1.2rem 0; }
+  .stat { border-left: 3px solid var(--rule); padding-left: .8rem; }
+  .stat b { display: block; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: .82rem; }
+  .chain-xno { color: var(--nano); font-weight: 600; }
+  .chain-xmr { color: var(--xmr); font-weight: 600; }
+  .foot { color: var(--muted); font-size: .85rem; margin-top: 3rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
+</style>
+<main>
+  <p class="eyebrow">Pre-implementation solutions register · August 2026 · invention-methodology run</p>
+  <h1>XNO⇄XMR Solutions Register</h1>
+  <p>Every critical issue of the trustless <span class="chain-xno">Nano</span>⇄<span class="chain-xmr">Monero</span> DEX, run through the brainstorming methodology (Methodology-Tree engine, deep mode) until settled. Three rounds: round 1 against best-in-class baselines, round 2 with exclusion clauses and round-1 winners as the bar, round 3 targeted (escrow construction + adversarial attack pass). All settled before any implementation.</p>
+
+  <div class="stats">
+    <div class="stat"><b>56</b><span>issues settled</span></div>
+    <div class="stat"><b>79</b><span>engine calls</span></div>
+    <div class="stat"><b>~790</b><span>ideas evaluated</span></div>
+    <div class="stat"><b>11</b><span>rounds</span></div>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I1 · Refunds without chain timelocks</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Chunked micro-swaps</strong> cap value-at-risk per abort at one chunk, making the refund path a rare backstop. The backstop: each party escrows <em>their own</em> key share in an RSW time-lock puzzle over an <strong>RSA modulus they generate themselves</strong> — a weak modulus only speeds up the counterparty's solve, hurting the generator alone, so setup is incentive-aligned and trustless. Staggered horizons T1 &lt; T2 with claim-deadline margins.</dd>
+      <dt>Residual risk</dt><dd>The verifiable-encryption sigma protocol ("puzzle hides the discrete log of K", Camenisch–Shoup style) is known cryptography but needs careful implementation and review. Hardware speed variance means horizons carry ~4× safety margins.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I2 · Adaptor-capable audited signing (ed25519-blake2b)</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Unmodified <code>frost-core</code></strong> with BlackBird's Blake2b ciphersuite substitution, plus a <strong>thin external adaptor module</strong> (~200 lines: pre-signature verification against the <code>X_A</code>-offset commitment, completion, secret extraction). The adaptor point is committed in the session transcript before nonce reveal. Hardening battery: differential tests against the Python reference harness, second-language cross-implementation, edge-scalar fuzzing (0, 1, ℓ−1), cofactor clearing, constant-time scalar ops, zero-dependency crate for focused audit.</dd>
+      <dt>Rejected en route</dt><dd>Engine's round-2 "add x to your own nonce" — produces an immediately-valid signature, destroying the adaptor property.</dd>
+      <dt>Residual risk</dt><dd>The module itself is unaudited until reviewed; surface deliberately minimized.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I3 · Nano frontier fork-race at secret reveal</h3>
+    <dl>
+      <dt>Solution</dt><dd>Two layers. <strong>Invariant:</strong> a completed refund signature may never coexist with a live claim window (refunds stay interactive or puzzle-based). <strong>Guard ladder:</strong> at setup — before any funds move — both parties pre-sign a ladder of representative-change blocks. Before any secret-revealing broadcast, the claimant broadcasts the next guard block (reveals nothing, moves nothing), waits for sub-second confirmation — which invalidates <em>every</em> stale-frontier signature — then broadcasts the claim from the fresh frontier, on which the claim is the only signature that has ever existed. Refusal to pre-sign the ladder cancels the swap at zero cost.</dd>
+      <dt>Attack review</dt><dd>Survived an 8-attack adversarial pass; racing the guard requires a refund signature the invariant forbids, and losing a guard race is a clean abort with nothing revealed.</dd>
+      <dt>Residual risk</dt><dd>Malicious principal representatives could delay votes (Nano-wide assumption); puzzle backstop bounds the damage.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I4 · Free option on matched orders</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Price the option:</strong> quotes carry an explicit time-decaying premium ∝ expected swap duration × recent volatility (computed client-side from both order books, no oracle). Plus: chunked execution caps exposure; a small non-refundable <span class="chain-xno">XNO</span> taker fee at session start; <strong>mutual micro-hostage bonds</strong> — both parties lock a small amount in a 2-of-2 that only returns cooperatively, so an aborter griefs themselves symmetrically; signed session transcripts as portable abort evidence for client-side reputation.</dd>
+      <dt>Residual risk</dt><dd>Option value is reduced and priced, not eliminated — cryptographically impossible to eliminate; spreads carry the remainder.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I5 · Instant trading (Monero latency, ~20 min)</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>One-way swap channels:</strong> the maker locks XMR once into a 2-of-2 FROST multisig with a specific taker (~20 min, once per pair). Every trade after that is instant: the taker pays each <span class="chain-xno">XNO</span> chunk on Nano (sub-second, final), and the maker co-signs a new unbroadcast Monero state transaction giving the taker a cumulatively larger slice. <em>Only the taker holds completed states</em>, each strictly better for them than the last — so no revocation and no timelocks are needed: the taker always broadcasts the latest, and the maker holds nothing to broadcast. Close cooperatively or by taker broadcast. Around it: instant binding commit via hostage micro-bonds, cross-trade netting within a session, risk-tiered instant delivery for dust trades, and pipelining for one-shot swaps outside channels. Cheating bound: one chunk.</dd>
+      <dt>Attack review</dt><dd>Survived an 8-attack pass with three amendments: fixed channel lifetime with client-enforced auto-close well before the maker's puzzle horizon T2 (the backstop would otherwise reclaim the taker's earned slice); fee margins plus periodic state re-signing against Monero fee drift; strict client-side validation of every state's arithmetic before paying the next chunk. Two engine findings were dismissed as construction misunderstandings (maker cannot broadcast old states it never holds; all states share one key image and only the taker's chosen state confirms).</dd>
+      <dt>Bidirectional trading</dt><dd>One-shot swaps are direction-symmetric by construction (roles follow the asset held, not buy/sell intent). Channels are strictly monotone, so reverse flow inside one channel is forbidden — instead each pair runs <strong>two mirrored one-way channels</strong> (buys ride A, sells ride B). Adversarial pass verified with amendments: <em>no cross-channel credit, ever</em> — every chunk is fully paid inside its own channel, killing the double-count attack by rule; identical T2 lifetimes for both channels; proactive background replacement when a channel nears drained; sell-side channel may open lazily on first sell. Double-lock capital cost accepted as the honest price of no timelocks.</dd>
+      <dt>Residual risk</dt><dd>Requires Monero 2-of-2 co-signing of state transactions (monero-serai FROST-CLSAG — existing code, no adaptor-on-CLSAG needed). First trade with a new counterparty still pays the ~20-min channel-open once; maker-side pre-locked inventory for unknown takers was proven unsound (the maker can always reconstruct keys it fully controls), so per-counterparty channels are the correct shape.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I6 · Maker liveness</h3>
+    <dl>
+      <dt>Solution</dt><dd>Always-on lightweight daemon <em>or</em> <strong>threshold-across-own-devices</strong>: the maker splits their share 2-of-3 across their own phone, home device, and laptop — any two complete the ceremony, so one sleeping device no longer kills resting orders and no new trust is added. Plus FROST nonce pre-computation (single-use, safely stored) shortening each ceremony to one round trip, and push-relay wake-on-match.</dd>
+      <dt>Residual risk</dt><dd>Fully-offline resting orders remain impossible — correctly so, since only the maker's keys may sign.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I7 · Order-book integrity &amp; censorship</h3>
+    <dl>
+      <dt>Solution</dt><dd>Signed orders carrying <strong>proof-of-funds</strong> (native Monero <code>get_reserve_proof</code> bound to a client nonce against replay; Nano balances public), mandatory freshness re-proofs for aging orders; periodic Merkle-root anchoring of the book in Nano <code>link</code> fields with adaptive cadence; client-verified inclusion proofs; ≥3-relay consistency audits with automatic minority-view rejection; deterministic order-hash tie-breaking.</dd>
+      <dt>Residual risk</dt><dd>Eventual consistency, not a canonical sequencer — accepted; front-running-by-reordering has no mempool to exploit.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag accepted">Accepted</span> I8 · Liquidity bootstrap without custody</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Embedded non-custodial market-maker bot</strong> in every client (own funds, own keys, configurable spread) plus competing professional solver-makers; open book-depth analytics to guide placement. Two rounds confirmed every pooled alternative reduces to custody, a token, or deception.</dd>
+      <dt>Residual risk</dt><dd>Cold-start depth depends on adoption; economics, not cryptography.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I9 · XNO-leg privacy</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Swap-chaining through Monero as the mixer:</strong> XNO→XMR→XNO round trips via different counterparties — Monero's own privacy breaks the Nano-side link, with <em>zero pool custody</em>, replacing the federated-mixer approach. Reinforced by fixed denominations and coordinated batch windows for timing/amount decorrelation.</dd>
+      <dt>Residual risk</dt><dd>Costs two spreads per round trip; anonymity set grows with DEX volume.</dd>
+    </dl>
+  </div>
+
+  <div class="issue">
+    <h3><span class="tag settled">Settled</span> I10 · FCMP++ migration</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Key-derivation isolation layer</strong> (pure-function boundary, raw bytes in/out) so the swap engine is CLSAG/CARROT-agnostic; dual-mode watcher switching on block version; node-version gate refusing new swaps around the fork; deterministic manual-recovery CLI reconstructing one-time keys from the shared view key; formal-lite check of sum-of-shares derivation against the CARROT spec; testnet fork replays.</dd>
+      <dt>Residual risk</dt><dd>Fork date uncertainty; the gate plus graceful-degradation mode bound exposure.</dd>
+    </dl>
+  </div>
+
+  <h2>Hardening register (N-series)</h2>
+  <p>Second-generation issues — mostly created by the settled design itself — each run through the same loop.</p>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N1 · Channel-state backup &amp; the unattended taker</h3>
+    <dl><dt>Solution</dt><dd>Each state's hash is anchored in the Nano chunk block's <code>link</code> field, making the Nano chain a free trustless journal of the channel's state sequence. N independent delegates each hold only completed (fixed-output) state transactions — structurally unable to steal or redirect — with dead-man triggers; one honest delegate suffices, and early-broadcast griefing is bounded to chunks since last sync.</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N2 · Channel states crossing the FCMP++ fork</h3>
+    <dl><dt>Solution</dt><dd>Hard lifetime caps ending before any announced fork height; trustless fork detection from Monero block versions; forced pre-fork settlement window; dual-format co-signing once the post-fork transaction format exists in code.</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N3 · RSW horizon calibration vs fast hardware</h3>
+    <dl><dt>Solution</dt><dd>No hardware-proof puzzle exists (memory-hard hybrids break the verifiable-escrow algebra), so this is a parameterization rule: assume worst-case ~20× ASIC advantage for 2048-bit squaring and size horizons in days — <code>deadline &lt; T_target / (2·S_max)</code>. The existing 7-day horizon vs 12–16 h solve already embeds &gt;10× margin.</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N4 · Nano PoW throughput for chunk streams</h3>
+    <dl><dt>Solution</dt><dd>Work for block i+1 depends only on block i's hash — known at signing — so PoW pipelines fully ahead of the chunk stream. GPU/WASM local generation, chunk-size adaptation to measured work latency, untrusted work services (verifiable output, any provider substitutable).</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N5 · Channel-open capital griefing</h3>
+    <dl><dt>Solution</dt><dd>Capacity-proportional mutual hostage bonds (the I4 mechanism reused), a small provable <span class="chain-xno">XNO</span> burn per open, maker-side portfolio exposure caps, and history-gated capacity from on-chain settlement records.</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N6 · Oracle-free reference price on a thin book</h3>
+    <dl><dt>Solution</dt><dd>Exponential-decay VWAP over <em>settled trades only</em> (anchored on-chain); quotes weighted by historical fill rate so wash-quotes count for nothing; robust median trimming; volatility bands widening under quote churn.</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N7 · Channel privacy leakage</h3>
+    <dl><dt>Solution</dt><dd>Per-chunk HMAC-derived address lattice from the channel's shared secret (verifiable by the counterparty, unclusterable by observers), uniform chunk sizes, timing jitter, and free Nano decoy payments. Taker funding privacy composes with I9 swap-chaining.</dd></dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> N8 · Single-seed disaster recovery</h3>
+    <dl><dt>Solution</dt><dd>One BIP39 seed HD-derives both chains' keys, FROST 2-of-2 shares, and adaptor secrets; channels and escrows rediscover statelessly from the N1 Nano breadcrumbs; the counterparty re-serves the latest state and cannot lie profitably because the on-chain journal pins the truth. Periodic offline restore drills.</dd></dl></div>
+
+  <h2>Experience register (U-series)</h2>
+  <div class="issue"><h3><span class="tag settled">Settled</span> U · One-page trading experience, one primary button</h3>
+    <dl>
+      <dt>Friction inventory</dt><dd>Fifteen issues: dual-chain onboarding, 20-min first channel open, delegate/backup chores, concept overload, order-type expression, cost opacity, counterparty choice, chunked-progress anxiety, bonds, refund terror, deadlines, maker liveness, PoW spikes, recovery.</dd>
+      <dt>Settled spec</dt><dd>One card: balances + bond shield; one amount field with tap-to-flip spend currency; an all-in "You receive" number (tap to decompose into spread/premium/fee); the rate line is editable — untouched means market, edited means limit, eliminating order-type controls entirely; one <strong>Swap</strong> button that becomes the fill progress bar (chunks aggregated into one smooth curve, staged honest labels incl. a truthful ~20-min "Securing channel" on first trade per maker); resting limits as thin cancellable rows with a tap-deep full-protocol drawer; an <strong>Earn</strong> toggle for maker mode. Setup folds into first use: silent seed at launch, card-as-receive-QR when empty, backup prompt only after first settled trade. Failure = calm "Returning funds — est. N h"; deadlines silent until &lt;1 h, then one banner. Rejected: gesture-only controls (undiscoverable) and masking waits with fake activity (dishonest).</dd>
+    </dl></div>
+
+  <h2>Binance-parity register (B-series)</h2>
+  <p>Every capability a centralized exchange offers, checked against what a serverless, custody-free, oracle-free design can honestly deliver. Eight issues brainstormed and settled; one capability honestly excluded.</p>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B1 · Live consolidated order book from gossip</h3>
+    <dl>
+      <dt>Solution</dt><dd>Client-side consolidation with <strong>proof-of-funds-weighted depth</strong> (I7 PoF proofs scale bar weight; unproven orders shown thinner, never hidden), <strong>exponential staleness fade</strong> so dead gossip dims instead of vanishing, 50 ms micro-batch coalescing for fluid ladder motion, deterministic order-hash tie-breaking (same book on every client), and the N6 settled-trade VWAP drawn as the one honest reference line. Provenance on tap: which relays confirmed a level.</dd>
+      <dt>Rejected en route</dt><dd>Consensus heatmaps and convergence pulses — chrome that violates the U-series one-page budget; staleness fade plus PoF weighting already carry the trust signal.</dd>
+      <dt>Residual risk</dt><dd>The book is a view of gossip, not a sequenced truth — eventual consistency accepted per I7.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B2 · Candles, ticker &amp; volume without a server</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>The on-chain journal is the market-data source of truth:</strong> candles, VWAP, and 24 h volume are computed client-side from settled trades anchored in Nano <code>link</code> fields (N1/N6 anchors reused — the DEX already pays for this data). Block timestamps, not local clocks, align OHLC intervals. Offline gaps close by syncing headers, then fetching trade proofs each verifiable against its anchor; peer-shared precomputed candles are accepted only after verification against the journal. Fake volume is unprintable: every candle hashes to its constituent settled trades.</dd>
+      <dt>Rejected en route</dt><dd>Median-of-5-peers ticker — pointless trust: the client computes the same number itself from the verified journal.</dd>
+      <dt>Residual risk</dt><dd>History depth equals DEX history; pre-launch charts are empty and shown empty.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B3 · Stop-loss / stop-limit / OCO / trailing without a trigger engine</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>All triggers are local:</strong> the I6 always-on daemon (or threshold-across-own-devices quorum) watches the N6 settled-trade VWAP and, on trigger, signs and broadcasts a pre-authorized bounded intent. OCO = two intents held locally with client-enforced exclusivity (fill of one broadcasts cancellation of the other); trailing = local recomputation of the trigger as the VWAP moves; stop-limit expiry checked against block height. Chained intents (DCA, brackets, rebalance) fire off detected settlements. No key or intent ever leaves the user's devices.</dd>
+      <dt>Residual risk</dt><dd>Triggers fire only while at least one of the user's own devices is up — stated plainly in the UI, never simulated. This is the honest price of no delegation.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B4 · Always-on book from peers that sleep</h3>
+    <dl>
+      <dt>Solution</dt><dd>Independent open-source relay mesh with nearest-healthy selection; persistent gossip caching to disk so reconnecting peers rebuild the book from exchanged caches instead of waiting on live propagation; state recovery replaying from the last I7 Merkle anchor; standby maker daemons keeping channels warm, paid by spread (no token); non-tokenized reputation weighting peer selection toward reliable relays; partition mode preferring local peers and cache.</dd>
+      <dt>Fallback</dt><dd>When no continuous book exists, the UI degrades to <strong>Spot Quote mode</strong> — request an instant quote from any warm channel — with real liveness metrics (peer count, relay health) always visible. Thin books are shown thin, never inflated.</dd>
+      <dt>Residual risk</dt><dd>Quiet-hours depth is an adoption question (I8), not a protocol one.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B5 · Feel-instant market fills outside channels</h3>
+    <dl>
+      <dt>Solution</dt><dd>Layered by cost of speed: <strong>warm-channel routing first</strong> (I5 channels are already instant); otherwise <strong>pre-committed quote streams</strong> — makers gossip signed limit quotes valid 5–10 s that takers execute against without negotiation; parallel quote requests to several makers, best price wins; small amounts ride a pipelined one-shot tier with pre-signed conditionals. The moment both signatures exist the trade is <em>binding</em> (hostage bonds make abort self-harming), so the UI shows "Locked — settling" immediately: a true state, not a mask, with settlement progress per the U-series staged labels.</dd>
+      <dt>Rejected en route</dt><dd>Engine's "optimistic UI masking async settlement" as worded — displaying <em>complete</em> before settlement is the fake-activity pattern U-series already banned; "binding" is what signature-time honestly supports.</dd>
+      <dt>Residual risk</dt><dd>Quote availability depends on maker liveness; degrades to normal negotiation.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B6 · Unified portfolio across wallet + channels + in-flight</h3>
+    <dl>
+      <dt>Solution</dt><dd>One <strong>Total Spendable</strong> header valued at the N6 VWAP, with tap-to-drill hierarchy: wallet, channel capacity (spendable directly from the swap field — channels are balance, not plumbing), in-flight chunks as state-verified "Processing" (deducted from spendable, visible in history), bonds as "Locked for trust" with unlock conditions, escrows as "Securely held" with hashes. An Effective-Liquid-Value column states time-to-settlement for locked positions instead of inventing discount prices. Alerts only when action is required (expiring channel, thin collateral) — silence otherwise, per U-series.</dd>
+      <dt>Residual risk</dt><dd>Fiat display is only as good as the settled-trade VWAP on a thin book — bands widen honestly (N6).</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B7 · Bot API &amp; notifications without a cloud</h3>
+    <dl>
+      <dt>Solution</dt><dd>A <strong>localhost WebSocket API</strong> on the user's own daemon: order-book snapshots and diffs, channel-state mirror, fill events carrying both counterparty signatures (self-verifying), real latency metrics in event headers, and a signed append-only event log doubling as a <strong>deterministic replay stream for backtesting</strong> against verified history. Price alerts evaluate locally; notifications go out through native OS channels or a self-hosted push bridge with encrypted minimal payloads. Per-client rate limits stop runaway scripts.</dd>
+      <dt>Residual risk</dt><dd>Phone-only users get push via their own always-on device or none — no Anthropic-of-notifications middleman is ever inserted silently.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> B8 · Fairness without a sequencer</h3>
+    <dl>
+      <dt>Solution</dt><dd>Binance's price-time priority needs a central clock; ours is replaced by <strong>mechanical fairness, honestly labeled first-come-first-served</strong>: commit-reveal quotes (terms hidden until the race starts, nothing to front-run), single-use tickets binding each quote to one executor, maker-signed timestamped receipts forming verifiable arrival queues, strict 5 s quote expiry bounding every race window, deterministic hash tie-breaking for true simultaneity, and a public audit trail of receipts vs settlements so reordering is provable. Live fill-rate and slippage stats displayed from settled data.</dd>
+      <dt>Rejected en route</dt><dd>Client-clock timestamp anchoring — self-signed clocks are free to lie; the maker's signed receipt is the only arrival evidence that binds anyone.</dd>
+      <dt>Residual risk</dt><dd>A malicious maker can still favor a friend within its own quote — but the audit trail makes it visible and reputation-costly, and it never touches anyone's funds.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag accepted">Excluded</span> B9 · Margin, leverage &amp; futures</h3>
+    <dl>
+      <dt>Decision</dt><dd><strong>Not offered, documented as impossible here:</strong> leverage requires either a custodian holding collateral or a liquidation oracle both sides must trust — each is exactly what this design exists to remove. Spot, limit, triggered orders, and channels are the honest product surface. Faking derivatives with trusted components would be indistinguishable from the CEXes this replaces.</dd>
+    </dl></div>
+
+  <h2>Incentive register (P-series)</h2>
+  <p>Why strangers run every role of this DEX at scale, with no token, no treasury, no fake yield — only real value flowing peer to peer. The unifying primitive is <strong>P8: the open incentive fabric</strong> — everything else rides on it.</p>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P8 · The open incentive fabric (how new incentives keep appearing)</h3>
+    <dl>
+      <dt>Solution</dt><dd>Three protocol primitives make <em>any</em> measurable service billable without permission: (1) <strong>optional fee/tip fields</strong> in every order, quote, and gossip message, so any service can price itself inline; (2) a <strong>generic signed service receipt</strong> binding a hash of performed work to a Nano payment address — feeless XNO micro-payments make per-message billing real; (3) a <strong>reserved metadata extension point</strong> in gossip messages where third parties advertise signed service offers. On top: an in-client marketplace listing peer-offered services ranked by journal-anchored settlement history, and client-side metrics (gossip latency, propagation time, backup freshness) that reveal which unpaid roles are load-bearing so payment gets attached <em>before</em> they rot.</dd>
+      <dt>Residual risk</dt><dd>Fee fields must never gate the core protocol itself (a tipless order still propagates) or relays drift into pay-to-exist censorship — a client-enforced rule, audited by the I7 consistency checks.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P1 · Makers</h3>
+    <dl>
+      <dt>Solution</dt><dd>Makers are paid four real ways: the <strong>spread</strong>; the <strong>I4 option premium</strong> (explicit, time-decaying — income, not friction); <strong>thin-book economics</strong> — early makers earn outsized spreads precisely while liquidity is scarce, the honest version of a liquidity-mining program; and <strong>channel amortization</strong> — the one ~20-min lock serves unlimited instant trades, so a maker's marginal cost per fill approaches zero while one-shot competitors pay full latency every time. Journal-anchored reputation (settled volume, distinct counterparties, bond history) earns better placement in every client's book view, compounding flow to reliable makers. The embedded bot makes all of this run while the maker sleeps.</dd>
+      <dt>Rejected en route</dt><dd>Engine's "gossip-latency advantage" reframed: seeing orders early is not an incentive to build on — it decays as propagation improves, and marketing it would sell front-running.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P2 · Relays</h3>
+    <dl>
+      <dt>Solution</dt><dd>Four stacking revenue lines, all P8 receipts: <strong>micro-tips per accepted broadcast</strong> (feeless XNO makes sub-cent payments viable); <strong>maker subscriptions</strong> for guaranteed uptime and bandwidth; <strong>anchoring service fees</strong> for batching book Merkle roots into Nano link fields; and the structural backstop — <strong>makers run relays themselves</strong> as a cost of capturing flow, so the network survives even a total market failure of independent relays. Paid propagation priority is allowed only as disclosed quality-of-service on the relay's own queue; matching stays taker-choice, so priority cannot reorder trades.</dd>
+      <dt>Rejected en route</dt><dd>Relay staking/slashing (needs custody or a fork — both banned); selling aggregated order-flow data (privacy-hostile; the book is public anyway).</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P3 · Delegates &amp; PoW work providers</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Delegates</strong> (N1 backup holders): per-epoch XNO micro-retainers, paid against challenge-response <em>proof-of-custody receipts</em> — the client periodically challenges a delegate to prove it still holds the latest state, and pays on the signed answer; stale answers stop payments and trigger replacement, killing delegate rot economically. <strong>Work providers</strong> (N4): Nano PoW invoiced per block against verifiable output — the work is checkable in microseconds, so payment-on-delivery needs no trust. Both bundle naturally into an advertised <strong>pro-maker service tier</strong> (relay + delegate + work + push) sold as one P8 subscription.</dd>
+      <dt>Rejected en route</dt><dd>"Latency insurance pools" and fee-redistribution rebates — pooled funds are custody; every payment here is bilateral.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P4 · Users &amp; growth</h3>
+    <dl>
+      <dt>Solution</dt><dd>No airdrops, no points. The user's yield is real and stated plainly: <strong>self-custody</strong> (zero exchange-failure risk), <strong>privacy</strong> (the I9 dividend), and <strong>competitive spreads</strong> — maker competition, not a subsidy, is the discount engine, and makers may voluntarily run fee holidays to buy flow. Growth loops that pay in real money: <strong>spread-share referrals</strong> — a referrer's client is paid a maker-agreed slice of the spread on referred flow, bilaterally, from real trades only; and <strong>reputation-gated capacity</strong> — settled history unlocks larger channel limits (N5), making tenure worth accumulating honestly.</dd>
+      <dt>Residual risk</dt><dd>Honest incentives compound slower than airdrops; the wedge audience is the one that already prices custody risk — Monero holders — accepted per I8.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P5 · Builders (bots, data, tooling)</h3>
+    <dl>
+      <dt>Solution</dt><dd>The B7 localhost API plus the P8 fabric makes third-party services sellable without our permission: <strong>strategy marketplaces</strong> settled peer-to-peer in XNO; <strong>paid backtest datasets</strong> cut from the verifiable settled-trade journal (provably un-fakeable data is the product); premium relays, analytics dashboards, custom integrations, education. Development <strong>bounties are pledges, not pools</strong>: makers co-sign public pledge receipts and each pays the builder directly on verified completion — coordination without a treasury.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P6 · Incentive failure modes (adversarial pass)</h3>
+    <dl>
+      <dt>Solution</dt><dd>Each projected failure got a constraint-clean countermeasure: <strong>relay tragedy-of-commons</strong> → P2 payments plus maker-run relays as floor. <strong>Maker exodus on thin volume</strong> → thin books widen spreads, which is itself the re-entry signal; the embedded bot keeps a passive floor. <strong>Delegate rot</strong> → paid proof-of-custody or replacement (P3). <strong>Wash-traded reputation</strong> → reputation weights <em>distinct-counterparty</em> settled volume, and every wash trade burns real spread, premium, and PoW — inflation is made expensive and low-yield, not impossible, and is stated so honestly. <strong>Referral fraud</strong> → referrals pay only from settled trades, so a fake user costs more than it earns. <strong>Cartelization</strong> → permissionless entry keeps any spread cartel contestable by one defector; the open book makes defection profitable. <strong>Race-to-zero spreads</strong> → accepted as the market working; no protocol fee floor — makers who can't cover risk exit, and spreads find the honest clearing level.</dd>
+      <dt>Rejected en route</dt><dd>Engine's protocol-fee redistribution, taker-fee treasuries, and slash-backed honesty — every one reduces to custody, a treasury, or a fork.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> P7 · The long tail of roles</h3>
+    <dl>
+      <dt>Solution</dt><dd>Roles the DEX creates beyond maker/taker/relay/delegate/work-provider, each viable on P8 receipts alone: <strong>channel-liquidity brokers</strong> (matchmaking idle capacity to demand — introductions for a fee, never custody), <strong>data republishers</strong> (journal-derived feeds for light clients, micro-tipped), <strong>reputation auditors</strong> (verified track-record reports sold to newcomers), <strong>topology optimizers</strong> (peer-routing advice priced by measured latency savings), plus security researchers on pledge-bounties, educators, localizers, and informal pre-settlement mediators. None require new protocol — that is the P8 fabric working as designed.</dd>
+    </dl></div>
+
+  <h2>Extraction register (G-series)</h2>
+  <p>The profit-seeker's audit: the system re-examined from the seat of someone with idle capital who wants to <em>gain</em> — trade, earn, extract. Eight critical gaps found, brainstormed, and settled. The standing rule underneath all of them: "deposit and earn rewards" always resolves to <strong>own-keys market-making and service income</strong> — there is no pool, and every displayed return is computed from the user's own real settled history, never promised.</p>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G1 · The engine behind the Earn toggle</h3>
+    <dl>
+      <dt>Gap</dt><dd>The one-page UI has an Earn toggle; nothing defined what it actually does with idle funds.</dd>
+      <dt>Solution</dt><dd>A default quoting engine with novice-safe risk controls: quotes anchored to the N6 decay-VWAP with spreads that <strong>widen with staleness, volatility, and thin depth</strong>; inventory-skew caps; a <strong>drawdown circuit breaker</strong> that pauses quoting at a user-set loss line; dynamic capital split between resting quotes and warm channels by measured flow. Before committing, the user sees a <strong>realized-yield band</strong> (their market's actual last-N-days spread+premium income per unit of capital — never an APY promise) and a worst-case-drawdown simulation from real settled-trade volatility. Consent is informed or the toggle stays off.</dd>
+      <dt>Rejected en route</dt><dd>Anything phrased as a yield number not derived from the journal — the honest projection is a band with provenance, or nothing.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G2 · The provable earnings ledger</h3>
+    <dl>
+      <dt>Gap</dt><dd>Earners could not see, attribute, or prove their income.</dd>
+      <dt>Solution</dt><dd>A <strong>deterministic pure-function accounting engine</strong> replaying the signed event log into financial statements — identical output on any client, cross-checkable against the on-chain anchors. Lines: realized spread per fill, premium income accrued along its decay curve, service-receipt income segregated from trading income, per-strategy attribution tags, <strong>mark-to-VWAP unrealized P&amp;L</strong> on inventory, and honest cost netting — PoW, relay tips, and the imputed opportunity cost of bonded capital. Exportable <strong>signed income statements</strong> a third party can verify against public chain anchors.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G3 · Dead capital</h3>
+    <dl>
+      <dt>Gap</dt><dd>Channels double-lock, bonds lock, and nothing minimized or recycled the idle portion.</dd>
+      <dt>Solution</dt><dd><strong>Channel capacity auto-sizing</strong> from measured flow (lock what moves, not what might); proactive rebalancing sweeps from under-utilized channels back to the wallet; <strong>automatic stale-channel retirement</strong>; just-in-time channel funding when book pressure signals imminent demand; bond reuse across sequential sessions with the same peer, refreshed by a new proof-of-funds each session; risk-scaled bond sizing (N5 history-gating reused); and <strong>idle-capital alerts</strong> stating the realized return the sleeping funds would have earned quoted, from journal data.</dd>
+      <dt>Rejected en route</dt><dd>Any "shared liquidity pool" reading of channel reuse — channels are strictly per-counterparty 2-of-2; a maker serves third parties only by sourcing inventory through its <em>own</em> channels, never by letting others spend them.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G4 · Inventory risk without derivatives</h3>
+    <dl>
+      <dt>Gap</dt><dd>Spread income means holding volatile inventory, and hedging instruments are banned (custody/oracles).</dd>
+      <dt>Solution</dt><dd>All-spot, all-local risk management: <strong>inventory-skewed quoting</strong> that leans prices to shed excess exposure and attract counter-flow; <strong>auto-rebalance to a target ratio via the DEX's own swaps</strong>; volatility-triggered spread widening escalating to full quote-pull; exposure-reducing order preference; hard stop-quoting rules; a per-session VaR figure from settled-trade volatility; and the premium explicitly framed in the ledger as the payment for bearing exactly this risk.</dd>
+      <dt>Deferred</dt><dd>Cross-pair natural hedging — sound, but waits until the DEX carries more than one pair.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G5 · Arbitrage tooling</h3>
+    <dl>
+      <dt>Gap</dt><dd>Cross-venue price gaps are the cleanest extraction method and nothing surfaced them.</dd>
+      <dt>Solution</dt><dd>A client-side <strong>gap scanner</strong>: the user configures external price feeds fetched by their own client — <em>personal signals, never protocol oracles</em> — compared against our VWAP with a <strong>net-of-everything profitability filter</strong> (spread, premium, chunking duration risk, service costs) so only genuinely profitable gaps surface. One-click signed quote placement to capture a gap; a latency-budget display (signing + propagation time per size); a chunking-risk calculator bounding slippage probability; and prominent honest warnings whenever the plan's profit depends on the slow DEX leg outrunning a moving external market.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G6 · The service-income cash register</h3>
+    <dl>
+      <dt>Gap</dt><dd>Relay/delegate/PoW income existed as a fabric (P8) with no concrete metering or collections.</dd>
+      <dt>Solution</dt><dd>Price lists advertised in gossip metadata (competing offers comparable in real time); automatic <strong>metering of served requests into signed receipts</strong>; receipt aggregation into batched feeless XNO settlements; <strong>deadbeat handling by service cutoff, never debt</strong>; utilization-adaptive pricing; bundled pro-maker tiers; and every service's take flowing into the G2 ledger as its own line item.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G7 · Referral plumbing</h3>
+    <dl>
+      <dt>Gap</dt><dd>Spread-share referrals were settled in principle (P4) with no mechanism.</dd>
+      <dt>Solution</dt><dd>The referral is a <strong>hashed-key attribution field inside the signed order</strong> (and in the channel-open handshake, covering every chunk that follows); the maker client auto-splits the agreed spread share to the referrer at settlement as a feeless XNO micro-payment. Referrers <strong>verify what they are owed against the public journal</strong>. Fraud economics do the policing: payouts come only from real spread on real settled volume, so self-referral pays the full spread to earn a slice of it back — a guaranteed loss. Codes carry expiry and payout caps; attribution is a hash, so the referred trader is never deanonymized.</dd>
+      <dt>Rejected en route</dt><dd>Engine's "bond slash for non-payment" — no network slashing exists (bonds are bilateral 2-of-2s). Non-payment is instead provable from the journal and priced reputationally: referrers publish the evidence and route flow away.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> G8 · Compounding &amp; profit management</h3>
+    <dl>
+      <dt>Gap</dt><dd>Earnings sat where they landed; exits were manual.</dd>
+      <dt>Solution</dt><dd>User-set <strong>auto-reinvest ratio</strong> rolling earned spread back into quoting capital, per asset; scheduled and threshold-triggered <strong>profit sweeps to cold storage</strong>, signed and broadcast locally; sweep privacy via the I9 swap-chaining mixer; compounding-aware projections drawn only from the user's own realized history; a one-tap <strong>pause-and-withdraw-everything</strong>; and a dead-man sweep built on the N1 delegate mechanism — delegates hold only the completed sweep-to-cold transaction, structurally unable to redirect it.</dd>
+      <dt>Rejected en route</dt><dd>"Client pre-signs and broadcasts on reconnection" dead-man — a client that can reconnect isn't dead; the N1 delegate shape is the correct one.</dd>
+    </dl></div>
+
+  <h2>Commitment register (H-series)</h2>
+  <p>A proposed incentive reviewed adversarially: <em>deposit and hold; withdrawing costs 10%, distributed to remaining holders.</em> The pooled form fails the constraints on three independent grounds; the kernel — paying people to commit capital — survives, rebuilt bilateral and custody-free as the <strong>Pledge</strong> mechanic.</p>
+
+  <div class="issue"><h3><span class="tag accepted">Rejected as stated</span> H1 · The pooled exit-tax mutual → bilateral commitment bonds</h3>
+    <dl>
+      <dt>Why the pool fails</dt><dd>(1) <strong>Custody:</strong> Nano/Monero have no covenants — a pool needs a custodian or guardian federation, and no chain rule can make a user's own key pay a penalty. (2) <strong>Honesty:</strong> stayers' income is leavers' principal — zero-sum "yield" that evaporates exactly when holding is least attractive. (3) <strong>Shape:</strong> pooled deposits paying holders from other participants' exits is the collective-investment/pyramid silhouette regardless of intent.</dd>
+      <dt>The salvage (settled)</dt><dd><strong>Bilateral commitment bonds:</strong> two named parties lock into a 2-of-2 FROST account with two pre-signed outcomes fixed at setup — a <em>maturity split</em> returning both principals cleanly (with a puzzle-escrow fallback strictly inside the horizon, so disappearance can never freeze funds), and an <em>early-exit split</em> the leaver may broadcast at any time that pays the staying counterparty the 10%. The penalty flows to the specific person harmed by the broken commitment — not to an anonymous pool — using only Block 1/5/6 machinery already built and tested. Under-collateralized bonds fail at open; pre-signed splits carry fee padding.</dd>
+      <dt>Rejected en route</dt><dd>N-of-N "circles" (exit-by-bribe re-signing — deadlocks and cartel bait); peer-consensus slashing (a trusted federation by another name); oracle-verified escrow payouts.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> H2 · Where the hold reward really comes from</h3>
+    <dl>
+      <dt>Solution</dt><dd>The commitment buyer pays. Makers who pledge inventory for a fixed term make the book reliable (B4) — so <strong>takers pay an explicit reliability premium</strong> for orders carrying a signed commitment timestamp, priced by the market like the I4 option premium; pledged makers earn <strong>channel-open discounts</strong> funded by the counterparty who saves the re-open cost; tighter advertised spreads on committed inventory are themselves the pledge dividend. Real value for a real service — the yield exists whether or not anyone ever exits.</dd>
+      <dt>Honesty rule</dt><dd>If a penalty is ever received, the G2 ledger books it as <em>"counterparty early-exit compensation"</em> — never blended into yield, and projected forward as zero.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> H3 · Game and death-spiral defenses</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Sybil/timing:</strong> pledge income weights by tenure (fresh pledges earn ~nothing), per-counterparty caps, entry lockups, and journal-verified settled history — shells cost real spread and earn nothing. <strong>Death spiral:</strong> every pledge has a <em>fixed maturity with a penalty that decays to zero</em> — everyone holds a clean exit date, so there is no last-holder deadlock and no open-ended confidence game; laddered maturities stagger exits structurally. <strong>Early liquidity:</strong> instead of a fixed panic price, an <em>exit auction</em> — the leaver offers the stayer a market-discovered fraction to co-sign an early clean close, bounded above by the 10% pre-signed path.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> H4 · Product shape: the Pledge toggle</h3>
+    <dl>
+      <dt>Solution</dt><dd>A <strong>Pledge</strong> toggle beside Earn: shows the premium buyers currently pay for pledged inventory (live, from signed orders), a penalty preview before commitment, countdown-to-maturity cards, ladder suggestions, realized pledge-income history from the journal, and the sovereignty line — <em>your funds never leave your keys</em>. Regulatory posture by construction: bilateral peer-to-peer service contracts, rewards from service fees not principal, fixed maturities, no recruitment linkage, no yield marketing.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> H5 · Continuous rewards without a pot</h3>
+    <dl>
+      <dt>Proposal reviewed</dt><dd>Bond registration fees into a shared pot, dripped hourly to members until exhausted — continuous-reward feel instead of one-time transfers.</dd>
+      <dt>Why the pot fails</dt><dd>Same custody wall as H1 (a communal pot needs a holder), and members-paying-members is circulating the same money, not income. "Impression of continuous rewarding" is only permissible when the stream is real or the amortization is labeled.</dd>
+      <dt>The salvage (settled)</dt><dd>The continuous feel, rebuilt on real flows: (1) <strong>hourly premium micro-payments</strong> — Nano is feeless, so the reliability premium streams from the buyer's client as literal hourly transactions until maturity ("pot finished" = term ended, honestly); (2) <strong>amortized penalty release</strong> — a received exit penalty is booked and displayed as an hourly schedule with a visible end date ("counterparty exit compensation, ends &lt;date&gt;"), honest because the funds are already the stayer's; (3) bond <strong>opening fees stay bilateral</strong> — paid to the specific counterparty for locking their side, streamable hourly like the premium.</dd>
+      <dt>Rejected en route</dt><dd>Cryptographically-enforced drip via an RSW installment ladder — buildable, but the recipient is the beneficiary; pacing enforcement against no adversary is cost without content. Display-level amortization with honest labels achieves the identical experience for the recipient — but the enforced variant was subsequently built anyway as <code>pledge::stream</code> for the case where pacing must be provable to third parties: installment signatures sealed under a sequential RSW chain (single public starting point; each next start derives from the previous solution), leaver-sealed, stayer-audited by cut-and-choose, settled in forced order by the frontier rule. Tested end to end.</dd>
+    </dl></div>
+
+  <h2>Pro-trading register (M-series)</h2>
+  <p>Making it feel like Binance — many orders at once, market <em>and</em> limit (and stop/OCO), and the full book/open-orders/history — without a central matcher or server. Eight issues settled. The unifying rule: a <strong>Simple/Pro toggle</strong> adds the pro surface without diluting the honest one-button mode, and every Binance affordance that a peer-to-peer swap cannot literally match is <em>relabeled truthfully</em> rather than faked.</p>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M1 · Pro view without betraying Simple mode</h3>
+    <dl>
+      <dt>Solution</dt><dd>A persistent <strong>Simple / Pro toggle</strong>. Pro reveals a depth ladder, a market/limit/stop/OCO order form, and open-orders + history tables — all fed by code that already exists (<code>dex-core</code> order/book/matching/triggers, the G2 ledger). Honesty is built into the surface: market orders are labeled <strong>"Instant fill (maker online)"</strong> vs <strong>"Queued (maker offline)"</strong>; every resting order carries a live maker-online dot; OCO pairs are visually grouped with one Cancel-Both; filled rows link the on-chain swap hash for independent verification.</dd>
+      <dt>Rejected en route</dt><dd>Unrealized-PnL on <em>open</em> orders framed as Binance does — an unfilled limit has no position, so we show only realized P&amp;L (G2) plus a clearly-labeled mark, never a fake position.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M2 · Making "market" feel instant, honestly</h3>
+    <dl>
+      <dt>Solution</dt><dd>An <strong>online-only book filter</strong> (a market order only ever targets makers whose quorum is live), <strong>warm-channel routing</strong> to makers you already have a channel with, <strong>parallel maker racing</strong> (broadcast the take to several online makers, first to complete wins), <strong>pre-committed quote streams</strong> valid N seconds, and a <strong>small-size instant tier</strong> on one-shot swap primitives. The moment the counterparty signs, the UI shows <em>"Locked — settling"</em> — a true binding state, never a fake "Filled."</dd>
+      <dt>Rejected en route</dt><dd>Bond-slashing "for going offline mid-quote" — there is no network slashing authority; uptime is instead priced by the market (offline makers simply don't get routed to) and by reputation.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M3 · Many resting orders vs the liveness truth</h3>
+    <dl>
+      <dt>Solution</dt><dd>Placing N limits is N signed orders under one <strong>batch funding proof</strong> ("N orders funded"). They rest only while the maker's <strong>always-on daemon or 2-of-3 device quorum</strong> is up — surfaced per order as <em>"Active while your node is up,"</em> grouped in the ladder as <strong>Live-now vs Scheduled</strong> so depth is never misleading. Short deterministic expiries with daemon auto-repost keep the book fresh; a brief <em>"Pending sync"</em> grace on disconnect lets in-flight takes finish before auto-cancel.</dd>
+      <dt>Rejected en route</dt><dd>"Relay completes the swap without the maker's live keys" — impossible; only the maker's keys can sign the swap. Pre-signed <em>intents</em> can be matched by a relay, but execution still needs the live quorum, stated as such.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M4 · A real full-depth ladder</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Cross-relay aggregation</strong> deduped by signature (no single relay's thinness caps the view), <strong>proof-of-funds-weighted bars</strong> with a <strong>verified-vs-unverified</strong> split, real spread/mid/last computed only from <em>settled</em> trades (N6), live WebSocket updates (already wired), the embedded market-maker bot seeding both sides from the user's own funds at cold-start, and an execution-probability highlight when both quorums are online. A historical-depth overlay gives context when live orders are sparse. Never pad or fabricate depth.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M5 · Correct partial fills</h3>
+    <dl>
+      <dt>Solution</dt><dd>A resting order carries a <strong>fillable remainder the maker decrements via signed version updates</strong> (M7 monotone versioning); each partial take is its own atomic swap for a sub-amount. Double-take of the same remainder is blocked by <strong>single-use tickets + commit-reveal</strong> (B8) — the taker commits to a hash of its fill amount and reveals during the swap. The reduced remainder is re-gossiped; the UI shows filled/remaining with a cancel-remaining action.</dd>
+      <dt>Rejected en route</dt><dd>"Burnable NFT units" and "majority-rule gossip convergence on the remainder" — the first is a token, the second invents a consensus layer neither chain has. Signed monotone remainders need neither.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M6 · Full order/history views, client-side</h3>
+    <dl>
+      <dt>Solution</dt><dd>Open-orders and history rebuilt purely from the client's own signed event log plus the on-chain settled-trade journal: an append-only signed event view with deterministic status transitions (New / PartiallyFilled / Filled / Cancelled), each Filled row <strong>reconciled against its Nano/Monero anchor</strong>, a per-swap cross-chain fill timeline, verifiable JSON export (each entry signed, chain-anchored), and <strong>open-order recovery after a restart from the N1 breadcrumbs</strong>. Same deterministic G2 replay, surfaced as tables.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M7 · Cancel / edit / bulk-cancel with no central book</h3>
+    <dl>
+      <dt>Solution</dt><dd><strong>Signed cancellation messages</strong> relays honor and propagate; <strong>monotone order-version numbers</strong> so the network keeps only the highest version (edit = signed cancel + repost at the next version, deterministic). The race is resolved by <strong>commit-first priority</strong>: a taker who broadcast a valid commit before the cancel propagated completes the swap, and a maker who tries to refuse that committed take forfeits its <strong>hostage bond to the taker</strong> — bilateral, objective, no network slashing. One signed <strong>bulk cancel-all</strong> clears the book.</dd>
+    </dl></div>
+
+  <div class="issue"><h3><span class="tag settled">Settled</span> M8 · The take→fill flow as one smooth experience</h3>
+    <dl>
+      <dt>Solution</dt><dd>One persistent <strong>"Executing swap" affordance</strong> with a segmented progress bar aggregating commit-reveal → FROST ceremony → guard broadcast → chunked settlement, with <strong>honest stage labels</strong> (not "Processing") and the <strong>one-chunk loss cap shown</strong>. An <em>"Secured by signature"</em> optimistic binding state at counterparty-signature time; background settlement so trading continues; on a maker drop, retry while online then a <strong>Re-match? prompt</strong> (never silent re-route — it respects FCFS); realistic <em>"Refunded — maker timeout"</em> messaging via the atomic-swap safety paths; instant post-trade ledger entry with the swap hash.</dd>
+    </dl></div>
+
+  <h2>Executable verification — 15/15 pass</h2>
+  <p>Every core mechanism was verified by an executable model (<code>verify_core.py</code>): real Schnorr/MuSig math on a stand-in curve, a Nano model enforcing one-block-per-frontier and signature rules, a Monero model enforcing key-image uniqueness and 10-block maturity, and a working cut-and-choose RSW escrow (verify-then-solve).</p>
+  <div class="tablewrap"><table>
+    <tr><th>Scenario</th><th>Verified claim</th></tr>
+    <tr><td>S01–S02</td><td>Joint signing rejects single partials; adaptor pre-signature invalid alone, completes with the secret, secret extractable from the on-chain signature.</td></tr>
+    <tr><td>S03–S04</td><td>One-shot swap atomicity end to end (XNO claim → XMR key reconstruction → sweep); cooperative refund with fresh nonces.</td></tr>
+    <tr><td>S05/S05b</td><td>Guard block invalidates a stale co-signed refund before reveal; losing the guard race is a clean abort with nothing revealed and funds refunded.</td></tr>
+    <tr><td>S06</td><td>Chunked swap loss ≤ one chunk at every possible abort point.</td></tr>
+    <tr><td>S07</td><td>Channel: states monotone, maker holds no completed states, latest state closes, old state both dead (key image) and strictly worse for its broadcaster.</td></tr>
+    <tr><td>S08–S09</td><td>Horizon rule <code>deadline &lt; T2/(2·S_max)</code> enforced strictly; mirrored channels settle independently with cross-channel credit refused.</td></tr>
+    <tr><td>S10</td><td>RSW cut-and-choose escrow: verifies cheaply, solving recovers the exact share, tampered escrow detected. (Caught a real invariant: puzzle modulus must exceed the curve order.)</td></tr>
+    <tr><td>S11–S12</td><td>State-hash journal exposes a counterparty serving a stale state at recovery; single seed re-derives every share identically.</td></tr>
+    <tr><td>S13–S14</td><td>Hostage bond cannot be taken unilaterally by an aborter; next-block PoW input is known at signing time, so work pipelines ahead of the chunk stream.</td></tr>
+  </table></div>
+  <p>Two model runs failed before passing, both catching real design constraints: the horizon rule must hold strictly (a boundary-equal deadline fails), and the escrow modulus must be larger than the curve order or the share truncates. Not verifiable in a model, deferred to testnet: live vote-convergence timing, Monero reorg behavior, monero-serai API fit, FCMP++ formats.</p>
+
+  <h2>Build order — Blocks 1–11 done · Tor-ready · real Nano-node settlement proven</h2>
+  <p><strong>Block 1 ✅</strong> — <code>swap-core/signing</code>: frost-core ed25519-blake2b ciphersuite + the I2 adaptor module; 8 tests passing incl. a pure-Python differential and proof the Blake2b challenge is load-bearing. <strong>Block 2 ✅</strong> — <code>swap-core/nano-ceremony</code>: joint account, guard ladder (I3), block builder, PoW (N4), saturation broadcast; verified against a real confirmed mainnet block (hash, live signature, era work) and a ledger model re-running S05/S05b with real block structures — including the setup insight that rung hashes are deterministic, so claims are adaptor-pre-signed against the post-guard frontier. <strong>Block 3 ✅</strong> — <code>swap-core/monero-side</code>: the I10 isolation layer (pure bytes-in/out derivations — the only file that changes at FCMP++/CARROT), MuSig-aggregated joint spend key (rogue-key safe, not the naive sum), shared view key, joint address, one-time-key derivation, and 2-of-2 CLSAG co-signing of channel states over monero-oxide's audited FROST multisig — with the joint key image assembled from public per-party shares and the I5 invariant proven in test: every state spending the channel's funding output carries the same key image, across independent ceremonies. <strong>Block 4 ✅</strong> — <code>swap-core/swap-engine</code>: I1 chunk schedules (one-chunk loss bound by construction), the N6/I4 pricing pair (decay VWAP + explicit time-decaying premium), and the deterministic swap state machine enforcing the one-chunk-in-flight invariant on every transition, with aborts routed to the puzzle backstop or the unilateral sweep. Crowned by the <em>atomic-chunk integration test</em>: one full chunk across all three crates with real cryptography — Bob\u2019s only path to the XNO chunk published exactly the scalar Alice needed to reconstruct the joint XMR key and land a verified CLSAG sweep. 28 tests green. <strong>Block 5 ✅</strong> — <code>swap-core/puzzle-escrow</code>: the I1 refund backstop as real code — RSW time-lock puzzles over per-instance self-generated moduli (trapdoor fast path for the generator, sequential squarings for the solver, calibration for sizing), cut-and-choose verification with algebraic binding <code>d·G = R + K</code>, and the strict N3 horizon rule. Both executable-model catches are now hard errors: a modulus at or below the curve order is rejected (S10), and a boundary-equal deadline fails (S08). Tamper caught on every surface, including a corrupted kept puzzle detected at recovery instead of yielding garbage. 33 tests green. <strong>Block 6 ✅</strong> — <code>swap-core/channels</code>: one-way monotone channels over real CLSAG co-signing — taker-held states, one key image per channel, lifetime caps strictly before T2, the S09 no-cross-channel-credit rule, and N1 journal anchoring with stale-serve conviction at recovery. 38 tests green. <strong>Web preview 🌐</strong> — the U-series one-page experience deployed live at <code>trustless-xno-xmr.vercel.app</code>: flip field, editable rate line (market/limit), all-in receive with decomposition, the Swap-button fill curve with honest staged labels, portfolio drill-down, and the Earn toggle with a realized-income ledger — simulated market, honestly bannered, verified in-browser. <strong>Block 7 ✅</strong> — <code>swap-core/dex-core</code>: the DEX layers as a transport-agnostic core — I7 signed orders with deterministic tie-breaking, the B1 consolidated book (byte-identical across clients, Merkle-rooted with inclusion proofs), B2 journal-only market data with per-candle integrity hashes, B8 commit-reveal matching with single-use tickets and an FCFS reorder-conviction audit, B3 local triggers with atomic OCO, the G1 quoting engine (skew shedding, volatility pull, latching drawdown breaker — no fabricated-APY code path exists), the G2 deterministic earnings ledger, and the I9 swap-chaining planner. 46 tests green. <strong>Block 8 ✅</strong> — <code>swap-core/pledge</code>: the H-series Pledge as real code — pre-signed early-exit chains paying the staying counterparty, the clean maturity split deliberately left unsigned (co-signed at maturity, or executed unilaterally after solving the counterparty\u2019s share escrow and reconstructing the joint key), linear penalty decay to zero, and a structural proof that no penalty-free early door exists. The Pledge toggle is live in the web preview with premium preview and visibly decaying penalty. 51 tests green. <strong>Block 9 ✅</strong> — <code>transport</code>: every two-party ceremony re-run across real threads exchanging only framed bytes (joint signing, adaptor presign with full lifecycle, CLSAG co-sign with key-image-share exchange; corrupted shares rejected at aggregation). <code>wasm-bridge</code>: the genuine engine compiled to WASM and wired into the live page — each swap now runs real FROST ed25519-blake2b keygen, guard rung, adaptor pre-signature, completion, and secret extraction in the visitor\u2019s browser, displaying the actual artifacts with verification marks. 60 tests green. <strong>Block 10 ✅</strong> — <code>transport::tcp</code> puts the ceremonies on a real length-prefixed TCP socket (the adaptor lifecycle runs across an actual localhost connection), and <code>dexd</code> is the honest B4 relay: a de-duplicating gossip daemon holding the deterministic book, forwarding only verified orders and holding no funds — proven by a real three-node mesh on localhost propagating an injected order intact. 63 tests green. <strong>Block 11 ✅</strong> — <code>transport::socks</code> lets the Wire trait ride a Tor circuit to a <code>.onion</code> (proxy-resolved domains, no DNS leak), and a read-only live-network validator fetched 12 real confirmed Nano blocks over public RPC and confirmed our hashing, address codec, and ed25519-blake2b signature verification match the network on <em>every one</em>. 65 tests green. The Nano leg now <strong>settles on real Nano consensus code</strong>: a nano_node V28.2 dev-network node accepted an OPEN block our <code>nano-ceremony</code>+<code>signing</code> stack built and signed — <code>process</code> returned the identical hash our code computed, the balance settled, and it persists across node restart. Also live: the deployed relay + automated maker daemon feeding a real order book into the browser Pro view. Remaining: the Monero stagenet leg (a stagenet node + faucet), best done supervised. <strong>Block 3</strong> — Monero sum-key wallet behind the I10 isolation layer, plus 2-of-2 state-transaction co-signing (monero-serai) for channels. <strong>Block 4</strong> — chunked swap state machine (I1/I4 schedules, premium pricing, hostage bonds). <strong>Block 5</strong> — puzzle escrow (I1 backstop, channel lifetimes). <strong>Block 6</strong> — swap channels (I5 instant trading). <strong>Block 7+</strong> — DEX layers (I6, I7, I8, I9).</p>
+
+  <p class="foot">Raw engine outputs preserved in <code>scratchpad/brainstorm/*.json</code> (rounds 1–3). Every engine idea was independently verified against the hard constraints before adoption; ~60% were eliminated as constraint-violating, and two engine refinements were rejected as cryptographically unsound (noted inline).</p>
+</main>

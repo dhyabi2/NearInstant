@@ -1,0 +1,22 @@
+[package]
+name = "dexd"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal relay daemon (B4): TCP gossip of signed orders with the deterministic consolidated book"
+
+[dependencies]
+dex-core = { path = "../dex-core" }
+signing = { path = "../signing" }
+nano-ceremony = { path = "../nano-ceremony" }
+tungstenite = "0.24"
+http = "1"
+hex = "0.4"
+
+[[bin]]
+name = "dexd"
+path = "src/main.rs"
+
+[dev-dependencies]
+rand = "0.8"
+frost-core = { version = "2", features = ["internals"] }
+signing = { path = "../signing" }

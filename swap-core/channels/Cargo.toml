@@ -1,0 +1,18 @@
+[package]
+name = "channels"
+version = "0.1.0"
+edition = "2021"
+description = "One-way swap channels (I5): monotone taker-held states, lifetime caps, N1 journal anchoring"
+
+[dependencies]
+monero-side = { path = "../monero-side" }
+nano-ceremony = { path = "../nano-ceremony" }
+signing = { path = "../signing" }
+modular-frost = { version = "0.11", features = ["ed25519"] }
+monero-clsag = { version = "0.1", features = ["multisig"] }
+blake2 = "0.10"
+
+[dev-dependencies]
+rand = "0.8"
+curve25519-dalek = "4"
+hex = "0.4"

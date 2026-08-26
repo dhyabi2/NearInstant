@@ -1,0 +1,37 @@
+[package]
+name = "swap-executor"
+version = "0.1.0"
+edition = "2021"
+description = "Settlement driver: sequences guard-confirm-then-reveal claim and secret-extraction sweep over real nodes"
+
+[dependencies]
+blake2 = "0.10"
+signing = { path = "../signing" }
+nano-ceremony = { path = "../nano-ceremony" }
+transport = { path = "../transport" }
+monero-side = { path = "../monero-side" }
+curve25519-dalek = "4"
+hex = "0.4"
+monero-wallet = { version = "0.2", default-features = false, features = ["std"], optional = true }
+monero-simple-request-rpc = { version = "0.1", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "time"], optional = true }
+ureq = { version = "2", features = ["json"], optional = true }
+serde_json = "1"
+zeroize = { version = "1", optional = true }
+rand = { version = "0.8", optional = true }
+
+[features]
+default = []
+monero = [
+    "dep:monero-wallet",
+    "dep:monero-simple-request-rpc",
+    "dep:tokio",
+    "dep:ureq",
+    "dep:zeroize",
+    "dep:rand",
+]
+
+[dev-dependencies]
+rand = "0.8"
+curve25519-dalek = "4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

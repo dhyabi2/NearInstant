@@ -1,0 +1,25 @@
+[package]
+name = "wasm-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Real swap-core cryptography compiled for the browser (Block 9b)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+signing = { path = "../signing" }
+nano-ceremony = { path = "../nano-ceremony", default-features = false }
+puzzle-escrow = { path = "../puzzle-escrow" }
+pledge = { path = "../pledge" }
+curve25519-dalek = { version = "4", features = ["rand_core"] }
+wasm-bindgen = "0.2"
+rand_core = { version = "0.6", features = ["getrandom"] }
+rand_chacha = "0.3"
+getrandom = { version = "0.2", features = ["js"] }
+hex = "0.4"
+blake2 = "0.10"
+argon2 = "0.5"
+
+[dev-dependencies]
+dex-core = { path = "../dex-core" }

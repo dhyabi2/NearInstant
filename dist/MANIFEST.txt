@@ -1,0 +1,23 @@
+trustless XNO<->XMR swap — content-addressed single-file bundle
+================================================================
+file:        swap.html   (184933 bytes, fully self-contained)
+sha256:      8753337e0c4bad0910aacbed4636ae2de86d524abdc6e5392dca50605078ea27
+ipfs cidv1:  bafkreiehkmzx4dclvuerbkwl5vddnlrn5bwvesv5y3stslokkbqfa6hke4
+
+VERIFY (no server needed):
+  shasum -a 256 swap.html   # must equal the sha256 above
+
+PUBLISH (pick any / all — content hash is identical everywhere):
+  ipfs add --cid-version=1 --raw-leaves dist/swap.html
+  # or drag into web3.storage / Pinata; or host the file anywhere
+  # (GitHub Pages, Codeberg, a VPS, Arweave). It is the SAME file/hash.
+
+REACH IT (any of these resolve the same bytes):
+  https://<cid>.ipfs.dweb.link
+  https://ipfs.io/ipfs/bafkreiehkmzx4dclvuerbkwl5vddnlrn5bwvesv5y3stslokkbqfa6hke4
+  or open the saved swap.html directly (file://).
+
+The hash is published OUTSIDE this file (here, git tags, pinned posts) so
+the file stays byte-clean. If two sources disagree on the bytes, the hash
+mismatch exposes it — the file cannot be tampered at one host without
+changing its address.

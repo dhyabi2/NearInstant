@@ -1,0 +1,12 @@
+{
+  "name": "wasm-bridge",
+  "description": "Real swap-core cryptography compiled for the browser (Block 9b)",
+  "version": "0.1.0",
+  "files": [
+    "wasm_bridge_bg.wasm",
+    "wasm_bridge.js",
+    "wasm_bridge.d.ts"
+  ],
+  "main": "wasm_bridge.js",
+  "types": "wasm_bridge.d.ts"
+}

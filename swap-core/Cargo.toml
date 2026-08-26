@@ -1,0 +1,3 @@
+[workspace]
+members = ["signing", "nano-ceremony", "monero-side", "swap-engine", "puzzle-escrow", "channels", "dex-core", "pledge", "transport", "wasm-bridge", "wasm-monero", "proofs", "dexd", "makerd", "swap-executor", "swapper", "swap-verify"]
+resolver = "2"

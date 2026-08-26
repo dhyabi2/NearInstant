@@ -1,0 +1,17 @@
+[package]
+name = "puzzle-escrow"
+version = "0.1.0"
+edition = "2021"
+description = "RSW time-lock verifiable escrow (I1 refund backstop): cut-and-choose puzzles with algebraic binding, N3 horizon rule"
+
+[dependencies]
+num-bigint-dig = { version = "0.8", features = ["prime", "rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
+curve25519-dalek = { version = "4", features = ["rand_core"] }
+rand_core = "0.6"
+rand = "0.8"
+
+[dev-dependencies]
+hex = "0.4"
+num-bigint-dig = "0.8"

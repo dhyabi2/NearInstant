@@ -1,0 +1,22 @@
+{
+  "name": "NearInstant — trustless XNO ⇄ XMR swaps",
+  "short_name": "NearInstant",
+  "description": "Trustless, non-custodial Nano ⇄ Monero atomic-swap DEX that runs entirely in your browser. No custody, no account, no backend.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#1FA2FF",
+  "background_color": "#e6f4ff",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["finance", "utilities", "productivity"],
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

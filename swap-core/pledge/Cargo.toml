@@ -1,0 +1,22 @@
+[package]
+name = "pledge"
+version = "0.1.0"
+edition = "2021"
+description = "Bilateral commitment bonds (H-series): pre-signed early-exit penalty chains, cooperative maturity close, puzzle-escrow fallback"
+
+[dependencies]
+signing = { path = "../signing" }
+nano-ceremony = { path = "../nano-ceremony", default-features = false }
+puzzle-escrow = { path = "../puzzle-escrow" }
+frost-core = { version = "2", features = ["internals"] }
+curve25519-dalek = "4"
+rand_core = "0.6"
+blake2 = "0.10"
+num-bigint-dig = "0.8"
+rand = "0.8"
+
+[dev-dependencies]
+rand = "0.8"
+hex = "0.4"
+puzzle-escrow = { path = "../puzzle-escrow" }
+num-bigint-dig = "0.8"

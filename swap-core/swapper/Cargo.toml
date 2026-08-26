@@ -1,0 +1,15 @@
+[package]
+name = "swapper"
+version = "0.1.0"
+edition = "2021"
+description = "Supervised atomic-swap settlement executor (maker/taker)"
+
+[dependencies]
+swap-executor = { path = "../swap-executor", features = ["monero"] }
+nano-ceremony = { path = "../nano-ceremony" }
+signing = { path = "../signing" }
+transport = { path = "../transport" }
+hex = "0.4"
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+rand = "0.8"

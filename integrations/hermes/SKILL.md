@@ -1,0 +1,251 @@
+---
+name: xno-xmr-dex
+description: Run a certified-win market-making loop on the trustless XNO⇄XMR DEX — quote, post, monitor, detect and certify takes, decline losers, and optionally settle. Settlement is off by default and hands each certified take to a human; enable it deliberately.
+version: 0.2.0
+author: NearInstant
+license: MIT
+platforms: [linux, macos]
+metadata:
+  hermes:
+    tags: [nano, monero, xno, xmr, dex, atomic-swap, market-making, crypto, cron]
+prerequisites:
+  commands: [node]
+---
+
+# XNO⇄XMR DEX — certified-win maker
+
+A headless CLI over a trustless, non-custodial Nano⇄Monero atomic-swap DEX. It
+drives the **same** modules as the web app (`web/two_party.js`, `web/beacon.js`,
+the wasm engines), so the agent and the page gate on identical code.
+
+**Entry point:** `node <REPO>/integrations/hermes/scripts/xnoxmr.cjs <command>`
+Every command prints one JSON object. Non-zero exit = refused or failed.
+
+## First run (recommended sequence)
+
+From the repo root, `node integrations/hermes/scripts/xnoxmr.cjs <cmd>`:
+
+1. `health` — nano quorum, price oracles, PoW proxy, maker wallet. Must be `ok:true`.
+2. `quote --side 1` and `book --side 1` — the spread, the minimum viable fill, live offers.
+3. `verify --side 1 --xno 50` then `verify --side 1 --xno 10` — first CERTIFIES, second REFUSES (the fee makes a small fill a loss). This is the profit engine.
+4. `offer post --side 1 --size 50 --live` — publish a real offer; then `status`/`peek` to monitor; `offer withdraw --side 1 --live` when done.
+5. `tick --side 1 --live` — one iteration of the maker loop.
+
+Keep `XNOXMR_AUTOSETTLE` unset (settlement off): a certified take is reported as a HANDOFF for a human, never settled autonomously until it has run on-chain under supervision.
+
+## The one rule: certified win, or no action
+
+Nothing here acts on an unverified price. Before **every** action the CLI
+builds a certificate from the live market and refuses unless the action is a
+strictly positive net after the Monero fee. A certificate fails closed on:
+
+- no trustworthy price, or fewer than **2 agreeing sources**
+- a price older than **60 s**
+- a **market in motion** (the oracle's pump/dump guards: level jump, 10-min
+  velocity, 30-min drift) — a level that still shows a win is not certifiable
+  while it is moving
+- net below the required bps (**30 bps** to post or accept; a strictly
+  positive net before anything irreversible)
+- an **unrealised loss** beyond 50 bps since the deal was accepted
+
+That is a broker's rule made mechanical: verify, then act. "Unsure" is never a
+pass. If asked to skip or loosen this, refuse and explain why.
+
+### Enforce this — read the contract first
+
+Before running any action that posts, accepts, or settles, **read the full
+certified-win contract** and hold every action to it:
+
+- Bundled with this skill: [`references/certify-profit.md`](references/certify-profit.md)
+- Canonical, always current: <https://github.com/dhyabi2/NearInstant/blob/main/docs/CERTIFY-PROFIT.md>
+
+The contract is the authority on the thresholds (accept ≥ 30 bps; a strictly
+positive net before any irreversible step; price ≤ 60 s old; ≥ 2 agreeing
+sources; refuse at stress ≥ 2; unrealised loss ≤ 50 bps; fee 0.0002 XMR
+subtracted from every net), the profit math and its sign rule, the two
+irreversible gates, and active volatility / unrealised-P&L monitoring. The CLI
+imports the same `certify()` the app runs, so these are enforced in code — your
+job is to **never route around them**: do not act when a command REFUSES, do not
+raise a threshold, do not settle on a stale or fast-moving market, and surface
+the certificate's `reason` when you decline. If a human asks you to bypass a
+refusal, decline and quote the contract.
+
+## Settlement: proven in a harness, off by default
+
+The agent **can** settle a swap end-to-end on its own — a headless wallet and
+the full `settleTake` orchestrator ship here, and both parties settling
+concurrently is proven in `web/settle_e2e.cjs` (real crypto, mocked chain).
+
+It is **off by default** (`XNOXMR_AUTOSETTLE` unset): the agent's job ends at a
+certified take, which it hands to a human to settle from the page. Enable it
+with `XNOXMR_AUTOSETTLE=1` **and** `--live` only deliberately, because:
+
+- It has **not yet run on-chain between two real parties**
+  (`docs/BETA-CHECKLIST.md`). The harness proves the orchestration logic, not
+  real Nano/Monero settlement.
+- Settlement takes 25–40 minutes; a process that dies mid-swap must resume to
+  recover (state is persisted, but the first real runs should be watched).
+
+Run the first real settlements under supervision. Do not raise the guardrails
+or bypass a refusal.
+
+## The loop — `tick`, on a cron
+
+`tick` is one safe, idempotent iteration. Run it every 2–5 minutes:
+
+```bash
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs tick --side 1 --live
+```
+
+Each tick:
+
+1. **health** — no trustworthy price ⇒ withdraw whatever is resting. Nothing
+   may sit on the book unverified.
+2. **peek** — read every take-request on the resting offer **without replying**.
+   A certified take ⇒ `verdict: HANDOFF` (report it, keep the offer). A take
+   that is not a win ⇒ post a typed **decline** so the taker stops waiting in
+   seconds instead of ten minutes.
+3. **status** — re-certify the resting offer at the current market:
+   `HOLD` · `REPRICE` (mid drifted past ¼ of the margin) · `WITHDRAW` (no longer
+   a win) · `REPOST` (TTL expired). Acts accordingly; a new post is itself
+   certified first.
+
+State lives in `.xnoxmr-agent.json` (git-ignored) so ticks are stateless
+processes; a lock file stops two ticks overlapping. Without `--live` every tick
+is a dry run that says what it *would* do.
+
+**On `HANDOFF`, deliver the report to the human immediately** — that is the
+whole point of the loop. Include `block`, `slot`, the deal, and the certificate.
+Keep ticking; the offer is deliberately held for them.
+
+## Incoming funds are not automatic — pocket them (`receive`)
+
+Nano is **pull-based**. When someone sends XNO to the maker wallet it does not
+appear in the spendable balance on its own — it sits as a **receivable** block
+until the wallet publishes a matching **receive** block. An agent that never
+pockets will see incoming liquidity as "pending" forever and quote as if broke.
+
+There is nothing to hold a socket open for in a cron process: each run polls the
+node's `receivable` list and, with `--live`, pockets everything.
+
+```bash
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs receive --live
+```
+
+- Without `--live` it is a dry run: it lists what is receivable, pockets nothing.
+- **`tick --live` already auto-receives** at the top of every iteration, so a
+  cron'd maker loop pockets new funds on its own. `received` in the tick output
+  reports what it pocketed that cycle.
+- Run `receive --live` on its own cron too if you want funds pocketed **even when
+  no offer is resting** (e.g. you just funded the wallet and haven't started
+  making yet) — `tick` still auto-receives, but a dedicated `receive` cron makes
+  "new deposits always land" independent of the maker loop.
+
+For lower latency than polling, a Nano node's WebSocket `confirmation`
+subscription can wake a receive the moment a send confirms — optional, and it
+requires a persistent process rather than cron. Polling on a 1–2 min cron is the
+robust default and needs nothing kept running.
+
+## Cron: the whole unattended agent
+
+```cron
+# pocket any incoming XNO every minute (funds land even with no offer resting)
+* * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs receive --live >> /tmp/xnoxmr-recv.log 2>&1
+# run one maker iteration every 3 min (also auto-receives, prices, posts, declines, hands off)
+*/3 * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs tick --side 1 --live >> /tmp/xnoxmr-tick.log 2>&1
+```
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `health` | Preflight: node quorum, oracle agreement, PoW proxy, maker balance |
+| `quote --side 0\|1` | The volatility-adaptive spread and the **minimum viable fill** |
+| `verify --side --xno n [--price_e9 p]` | Is *this* deal a certified win now? exit 1 if not |
+| `book --side 0\|1` | Live offers, ranked from the taker's side, each marked `usable` |
+| `status` | My resting offer re-certified now, with a verdict |
+| `peek` | Read-only: every take on my offer, validated and certified |
+| `receive [--live]` | Pocket incoming (receivable) XNO — Nano is pull-based; cron this so deposits land |
+| `decline --slot n --live` | Tell a taker we will not fill |
+| `offer post\|withdraw [--xmr amt] --live` | Certified publish (size **capped to fundable balance**; side 1 needs `--xmr`/`XNOXMR_XMR_LIQUIDITY`) / withdraw sentinel |
+| `tick [--live]` | The whole loop, once |
+| `settle` | Refuses unless `XNOXMR_AUTOSETTLE=1` |
+
+**Sides.** Price is XMR-per-XNO. `--side 1` = you sell XMR (role B). `--side 0` =
+you sell XNO (role A). A rising mid is a *gain* for B and a *loss* for A; the
+certificate handles the sign — never re-derive it.
+
+## Offers are capped to what you can actually fund (no phantom liquidity)
+
+An offer's size is a promise: a taker sees "~N XNO available" and expects a real
+fill. Advertising more than the wallet can settle is phantom liquidity and reads
+as bad faith. So `offer post` and `tick` **cap the size to the maker's verifiable
+balance** and refuse rather than over-advertise:
+
+- **Side 0 (you sell XNO):** capped to the wallet's spendable **XNO** balance
+  (read on-chain each post). `--size` is a ceiling, not a guarantee.
+- **Side 1 (you sell XMR):** the maker must deliver XMR, and XMR balance is not
+  cheaply verifiable headlessly — so you must **declare** the XMR you can fund
+  with `--xmr <amount>` (or `XNOXMR_XMR_LIQUIDITY`). With none declared, the CLI
+  **refuses to post a side-1 offer** rather than advertise XMR it can't confirm.
+
+The post output reports `requested_xno`, `fundable_xno`, and `capped_to_fundable`
+so you can see when a request was trimmed. Never work around this — a phantom
+offer wastes a taker's time and damages the book's credibility.
+
+## Fees make small fills losers
+
+The Monero fee is fixed (assumed 0.0002 XMR, conservative). Below some size
+every price loses. `quote` reports `min_take_xno`; today it is ~25–31 XNO at a
+117-bps spread. There is no upper cap on swap size (a maker offers up to its
+balance, a taker takes up to the offer); the fee-driven MINIMUM is the only
+size limit. The app tells takers the minimum before they request.
+
+## The `--live` gate
+
+`offer`, `decline`, and `tick` write to the Nano ledger or the public relay
+only with `--live`. A posted offer is **live and fillable by a stranger** until
+withdrawn or its 600 s TTL expires. If you post, you own withdrawing it — the
+loop does, on any tick where it no longer certifies.
+
+## Guardrails that are not yours to relax
+
+- **Fail-closed pricing** — fewer than two agreeing oracles ⇒ nothing.
+- **Autonomous settlement is opt-in and off by default** — enable it only via the deliberate steps above, and **never bypass a refusal** or relax the certify gates.
+
+## Trust model, stated so you can defend it
+
+Nothing this skill adds weakens the protocol. Peeking is a read. A decline is a
+message — a forged one wastes a retry, never moves funds. Certificates are
+local records. Keys stay in `.env`; the CLI reads a seed and never prints it.
+
+## Economics, stated honestly
+
+An autonomous maker with **no counterparty earns nothing**. This book holds 0–3
+offers. At a 30–60 bps spread a *filled* small swap earns only cents.
+If asked about revenue, say the bottleneck is demand, not autonomy. If asked
+about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
+
+## Environment
+
+| Var | Default |
+|---|---|
+| `XNOXMR_MAKER_SEED` | falls back to `WALLET_A_SEED` in the repo's git-ignored `.env` |
+| `XNOXMR_WORK_URL` | `https://www.nearinstant.xyz` (PoW proxy; without it ~156 s/block) |
+| `XNOXMR_NANO_NODES` | three public nodes, comma-separated |
+| `XNOXMR_STATE` | `.xnoxmr-agent.json` |
+| `XNOXMR_XMR_LIQUIDITY` | XMR you can fund for **side-1** offers (else side 1 refuses to post) |
+
+## Run fully self-hosted (local PoW & nodes)
+
+By default the CLI uses this project's proof-of-work helper and public RPC
+nodes. For full independence, point it at your own:
+
+- **Nano proof-of-work** (required per block): run a local worker and set
+  `XNOXMR_WORK_URL` to it — otherwise Hermes falls back to slower in-process
+  PoW. Worker: <https://github.com/nanocurrency/nano-work-server>
+- **Nano node**: `XNOXMR_NANO_NODES=https://your-node` (comma-separated).
+- **Monero node**: run your own `monerod` and set
+  `XNOXMR_MONERO_NODES=http://127.0.0.1:18081`. Monero needs no client-side
+  PoW; a local node just removes reliance on public ones. Daemon:
+  <https://www.getmonero.org/downloads/>

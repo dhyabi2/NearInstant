@@ -1,0 +1,16 @@
+[package]
+name = "makerd"
+version = "0.1.0"
+edition = "2021"
+description = "Always-on automated maker daemon (I6/I8): posts real signed orders to the relay, runs swap-take ceremonies"
+
+[dependencies]
+dex-core = { path = "../dex-core" }
+signing = { path = "../signing" }
+frost-core = { version = "2", features = ["internals"] }
+rand = "0.8"
+hex = "0.4"
+
+[[bin]]
+name = "makerd"
+path = "src/main.rs"

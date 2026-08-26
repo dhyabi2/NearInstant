@@ -1,0 +1,8 @@
+[package]
+name = "swap-verify"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone offline verifier for published settlement transcripts (R11)"
+
+[dependencies]
+swap-executor = { path = "../swap-executor" }

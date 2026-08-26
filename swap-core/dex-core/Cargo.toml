@@ -1,0 +1,20 @@
+[package]
+name = "dex-core"
+version = "0.1.0"
+edition = "2021"
+description = "DEX layers (Block 7): signed orders, consolidated book with Merkle anchoring, market data, commit-reveal matching, quoting engine, earnings ledger"
+
+[dependencies]
+signing = { path = "../signing" }
+swap-engine = { path = "../swap-engine" }
+blake2 = "0.10"
+frost-core = { version = "2", features = ["internals"] }
+rand_core = "0.6"
+curve25519-dalek = "4"
+sha3 = "0.10"
+
+[dev-dependencies]
+rand = "0.8"
+hex = "0.4"
+frost-core = { version = "2", features = ["internals"] }
+signing = { path = "../signing" }

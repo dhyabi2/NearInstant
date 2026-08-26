@@ -1,0 +1,37 @@
+[package]
+name = "monero-side"
+version = "0.1.0"
+edition = "2021"
+description = "Monero side: sum-key joint wallet behind the I10 isolation layer + 2-of-2 CLSAG co-signing"
+
+[dependencies]
+monero-wallet = { version = "0.2", default-features = false, features = ["std", "multisig"] }
+monero-clsag = { version = "0.1", features = ["multisig"] }
+modular-frost = { version = "0.11", features = ["ed25519"] }
+dkg = { version = "0.6", features = ["std"] }
+curve25519-dalek = "4"
+dalek-ff-group = "0.5"
+ciphersuite = { version = "0.4", features = ["std", "ed25519"] }
+zeroize = "1"
+rand_core = "0.6"
+transcript = { package = "flexible-transcript", version = "0.3", features = ["recommended"] }
+dkg-musig = "0.6"
+monero-simple-request-rpc = { version = "0.1", optional = true }
+
+# Browsers have no ambient entropy syscall; route getrandom through JS.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[features]
+# The native HTTP transport (rpc module). Off for wasm32 targets, where the
+# browser supplies the transport (see wasm-monero) — the crypto (isolation,
+# cosign, fee, eclipse) is target-independent.
+default = ["rpc"]
+rpc = ["dep:monero-simple-request-rpc"]
+
+[dev-dependencies]
+rand = "0.8"
+hex = "0.4"
+ciphersuite = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+zeroize = "1"
