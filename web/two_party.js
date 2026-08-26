@@ -234,14 +234,15 @@
     }
     if (slot < 0) throw new Error("this offer's rendezvous is full — try another offer");
     await relay.post(rvBox(offer.blockHash), slot, jsonBytes({ v: 1, pub: hx(pub), deal }));
-    if (onProgress) onProgress("waiting for the maker to accept…");
+    if (onProgress) onProgress("waiting for the maker to accept… the maker must be online and accepting (times out in 10 min)");
     let resp = null;
-    const deadline = Date.now() + 10 * 60 * 1000;
+    const deadline = Date.now() + 10 * 60 * 1000, start = Date.now();
     while (!resp && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4000));
       resp = await relay.fetch(rvRespBox(offer.blockHash), slot);
-      if (!resp) await new Promise((r) => setTimeout(r, 4000));
+      if (!resp && onProgress) onProgress("still waiting for the maker to accept… " + Math.round((Date.now() - start) / 1000) + "s (a maker must be running its accept loop — Smart Offer, or an agent with autosettle on)");
     }
-    if (!resp) throw new Error("maker did not respond (offer may be gone)");
+    if (!resp) throw new Error("no maker accepted within 10 min — nobody was online accepting this offer. Both sides must be live at once: take an offer whose maker is actively running, or run the maker (Smart Offer) yourself on the other side.");
     const rj = bytesJson(resp);
     // A typed decline: the maker read our request and refused it (usually
     // because it is no longer a certified win for them). Fail in seconds, not
