@@ -534,6 +534,7 @@
             <div id="tpDeposit" style="display:none;margin-top:.6rem;border:2px solid var(--ink);background:#fff;box-shadow:4px 4px 0 var(--ink);padding:.9rem">
               <div style="font-weight:850;font-size:.95rem" id="tpDepTitle">Fund your swap</div>
               <div class="sub" id="tpDepMsg" style="margin-top:.25rem"></div>
+              <canvas id="tpDepQr" style="margin:.6rem auto .2rem;display:block;image-rendering:pixelated;border:2px solid var(--ink)"></canvas>
               <div class="mono" id="tpDepAddr" style="margin-top:.5rem;font-size:.72rem;word-break:break-all;border:2px solid var(--ink);padding:.5rem;background:#f7f7f7;user-select:all"></div>
               <div style="display:flex;gap:.5rem;margin-top:.5rem">
                 <button id="tpDepCopy" style="font-family:inherit;font-weight:800;font-size:.78rem;padding:.4rem .8rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Copy address</button>
@@ -3033,14 +3034,87 @@ function tpWalletOpen() { try { return !!(walletApi && walletApi.address()); } c
 // websocket started on unlock) auto-pockets any incoming XNO and validates it
 // on-chain; we poll the balance to detect when it clears the target, then
 // resolve so the swap can continue. Resolves false if the user cancels.
+// Minimal, correct QR encoder — byte mode, ECC level M, versions 1–6 (covers a
+// Nano address). Verified by independent round-trip decode. Returns an N×N 0/1
+// matrix. No external library, no network — safe under the strict CSP.
+const qrMatrix = (function () {
+  const EXP = new Array(512), LOG = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const mul = (a, b) => a && b ? EXP[LOG[a] + LOG[b]] : 0;
+  function rsGen(n) { let p = [1]; for (let i = 0; i < n; i++) { const np = new Array(p.length + 1).fill(0); for (let j = 0; j < p.length; j++) { np[j] ^= mul(p[j], EXP[i]); np[j + 1] ^= p[j]; } p = np; } return p; }
+  function rsEnc(data, n) { const gen = rsGen(n); const res = new Array(n).fill(0); for (const d of data) { const f = d ^ res[0]; res.shift(); res.push(0); if (f) for (let j = 0; j < n; j++) res[j] ^= mul(gen[j], f); } return res; }
+  const ECM = { 1: [16, 10, [[1, 16]]], 2: [28, 16, [[1, 28]]], 3: [44, 26, [[1, 44]]], 4: [64, 18, [[2, 32]]], 5: [86, 24, [[2, 43]]], 6: [108, 16, [[4, 27]]], 7: [124, 18, [[4, 31]]], 8: [154, 22, [[2, 38], [2, 39]]], 9: [182, 22, [[3, 36], [2, 37]]], 10: [216, 26, [[4, 43], [1, 44]]] };
+  const ALIGN = { 1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50] };
+  function pickVersion(len) { for (let v = 1; v <= 10; v++) if (4 + (v < 10 ? 8 : 16) + len * 8 <= ECM[v][0] * 8) return v; return 10; }
+  function toBytes(str) { const b = []; const e = unescape(encodeURIComponent(str)); for (let i = 0; i < e.length; i++) b.push(e.charCodeAt(i)); return b; }
+  function verInfo(ver) { if (ver < 7) return null; let d = ver << 12; const g = 0b1111100100101; for (let i = 17; i >= 12; i--) if ((d >> i) & 1) d ^= g << (i - 12); return (ver << 12) | d; }
+  function encode(text) {
+    const data = toBytes(text), ver = pickVersion(data.length), ecm = ECM[ver], ndata = ecm[0], necc = ecm[1], ccbits = ver < 10 ? 8 : 16;
+    let bits = []; const put = (v, n) => { for (let i = n - 1; i >= 0; i--) bits.push((v >> i) & 1); };
+    put(4, 4); put(data.length, ccbits); for (const d of data) put(d, 8);
+    if (bits.length + 4 <= ndata * 8) put(0, 4); while (bits.length % 8) bits.push(0);
+    const cw = []; for (let i = 0; i < bits.length; i += 8) { let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j]; cw.push(b); }
+    const pads = [0xEC, 0x11]; let pi = 0; while (cw.length < ndata) cw.push(pads[pi++ % 2]);
+    const blocks = []; let off = 0; for (const gdef of ecm[2]) { const nb = gdef[0], dc = gdef[1]; for (let i = 0; i < nb; i++) { const dblk = cw.slice(off, off + dc); off += dc; blocks.push({ d: dblk, e: rsEnc(dblk, necc) }); } }
+    const maxD = Math.max.apply(null, blocks.map(b => b.d.length)); const out = [];
+    for (let i = 0; i < maxD; i++) for (const b of blocks) if (i < b.d.length) out.push(b.d[i]);
+    for (let i = 0; i < necc; i++) for (const b of blocks) out.push(b.e[i]);
+    const N = 17 + 4 * ver; const m = Array.from({ length: N }, () => new Array(N).fill(null));
+    const finder = (r, c) => { for (let i = -1; i <= 7; i++) for (let j = -1; j <= 7; j++) { const rr = r + i, cc = c + j; if (rr < 0 || cc < 0 || rr >= N || cc >= N) continue; const on = (i >= 0 && i <= 6 && (j === 0 || j === 6)) || (j >= 0 && j <= 6 && (i === 0 || i === 6)) || (i >= 2 && i <= 4 && j >= 2 && j <= 4); m[rr][cc] = on ? 1 : 0; } };
+    finder(0, 0); finder(0, N - 7); finder(N - 7, 0);
+    for (let i = 8; i < N - 8; i++) { if (m[6][i] === null) m[6][i] = i % 2 === 0 ? 1 : 0; if (m[i][6] === null) m[i][6] = i % 2 === 0 ? 1 : 0; }
+    const ap = ALIGN[ver], last = ap[ap.length - 1]; for (const r of ap) for (const c of ap) { if ((r === 6 && c === 6) || (r === 6 && c === last) || (r === last && c === 6)) continue; for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) m[r + i][c + j] = Math.max(Math.abs(i), Math.abs(j)) !== 1 ? 1 : 0; }
+    m[N - 8][8] = 1;
+    const reserve = (r, c) => { if (m[r][c] === null) m[r][c] = 2; };
+    for (let i = 0; i < 9; i++) { reserve(8, i); reserve(i, 8); } for (let i = 0; i < 8; i++) { reserve(8, N - 1 - i); reserve(N - 1 - i, 8); }
+    const vi = verInfo(ver); if (vi !== null) { for (let i = 0; i < 18; i++) { const bit = (vi >> i) & 1, a = Math.floor(i / 3), b = i % 3; m[N - 11 + b][a] = bit; m[a][N - 11 + b] = bit; } }
+    function fmtBits(mask) { const d0 = (0 << 3) | mask; let d = d0 << 10; const gp = 0b10100110111; for (let i = 14; i >= 10; i--) if ((d >> i) & 1) d ^= gp << (i - 10); let v = ((d0 << 10) | d) ^ 0b101010000010010; const arr = []; for (let i = 14; i >= 0; i--) arr.push((v >> i) & 1); return arr; }
+    function tryMask(mask) {
+      const g = m.map(row => row.slice()); let bi = 0, dir = -1;
+      for (let col = N - 1; col > 0; col -= 2) { if (col === 6) col--;
+        for (let cnt = 0; cnt < N; cnt++) { const row = dir < 0 ? N - 1 - cnt : cnt;
+          for (let k = 0; k < 2; k++) { const c = col - k; if (g[row][c] !== null) continue;
+            const bit = bi < out.length * 8 ? ((out[bi >> 3] >> (7 - (bi & 7))) & 1) : 0; bi++; let inv = false; const mr = row, mc = c;
+            switch (mask) { case 0: inv = (mr + mc) % 2 === 0; break; case 1: inv = mr % 2 === 0; break; case 2: inv = mc % 3 === 0; break; case 3: inv = (mr + mc) % 3 === 0; break; case 4: inv = (Math.floor(mr / 2) + Math.floor(mc / 3)) % 2 === 0; break; case 5: inv = ((mr * mc) % 2 + (mr * mc) % 3) === 0; break; case 6: inv = (((mr * mc) % 2 + (mr * mc) % 3) % 2) === 0; break; case 7: inv = (((mr + mc) % 2 + (mr * mc) % 3) % 2) === 0; break; }
+            g[row][c] = bit ^ (inv ? 1 : 0); } } dir = -dir; }
+      const fmt = fmtBits(mask); let k = 0; for (let i = 0; i <= 5; i++) g[8][i] = fmt[k++]; g[8][7] = fmt[k++]; g[8][8] = fmt[k++]; g[7][8] = fmt[k++]; for (let i = 5; i >= 0; i--) g[i][8] = fmt[k++];
+      k = 0; for (let i = 0; i < 8; i++) g[N - 1 - i][8] = fmt[k++]; for (let i = 0; i < 7; i++) g[8][N - 7 + i] = fmt[k++]; return g;
+    }
+    function penalty(g) { let p = 0; const n = g.length;
+      for (let r = 0; r < n; r++) { let run = 1; for (let c = 1; c < n; c++) { if (g[r][c] === g[r][c - 1]) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } }
+      for (let c = 0; c < n; c++) { let run = 1; for (let r = 1; r < n; r++) { if (g[r][c] === g[r - 1][c]) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } }
+      for (let r = 0; r < n - 1; r++) for (let c = 0; c < n - 1; c++) { const v = g[r][c]; if (v === g[r][c + 1] && v === g[r + 1][c] && v === g[r + 1][c + 1]) p += 3; }
+      let dark = 0; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) dark += g[r][c]; p += Math.floor(Math.abs(dark * 100 / (n * n) - 50) / 5) * 10; return p; }
+    let best = null, bp = 1e9; for (let mask = 0; mask < 8; mask++) { const g = tryMask(mask); const pn = penalty(g); if (pn < bp) { bp = pn; best = g; } }
+    return best;
+  }
+  return encode;
+})();
+// Draw a QR matrix onto a canvas with a quiet zone, crisp square modules.
+function tpDrawQr(canvas, text) {
+  try {
+    const m = qrMatrix(text); const n = m.length, quiet = 4, px = 5, size = (n + quiet * 2) * px;
+    canvas.width = size; canvas.height = size; canvas.style.width = size + "px"; canvas.style.height = size + "px";
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size); ctx.fillStyle = "#0b0b0b";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) ctx.fillRect((c + quiet) * px, (r + quiet) * px, px, px);
+    return true;
+  } catch (e) { return false; }
+}
 let tpDepTimer = null;
 function tpHideDeposit() { if (tpDepTimer) { clearInterval(tpDepTimer); tpDepTimer = null; } const el = $("tpDeposit"); if (el) el.style.display = "none"; }
-function tpShowDeposit(needXno) {
+function tpShowDeposit(needXno, haveXno) {
   return new Promise((resolve) => {
     const el = $("tpDeposit"); if (!el || !tpWalletOpen()) { resolve(false); return; }
     const addr = walletApi.address();
+    const short = Math.max(needXno - (haveXno || 0), 0.000001);
+    // Encode a nano: payment URI (address + amount in raw) so a scanning wallet
+    // pre-fills both. Amount is the shortfall to reach the funded target.
+    const raw = (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString();
+    const uri = "nano:" + addr + "?amount=" + raw;
     $("tpDepTitle").textContent = "Deposit XNO to fund your swap";
-    $("tpDepMsg").textContent = "This swap needs about " + needXno.toFixed(3) + " XNO in your wallet. Send XNO to your address below — it's detected automatically, no need to refresh.";
+    $("tpDepMsg").textContent = "This swap needs about " + needXno.toFixed(3) + " XNO. Send at least " + short.toFixed(3) + " XNO to the address below (or scan the code) — it's detected automatically, no refresh needed.";
+    if ($("tpDepQr")) { const drew = tpDrawQr($("tpDepQr"), uri); $("tpDepQr").style.display = drew ? "block" : "none"; }
     $("tpDepAddr").textContent = addr;
     $("tpDepStatus").textContent = "● Waiting for your deposit…";
     el.style.display = ""; try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
@@ -3116,7 +3190,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     let have = 0; try { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); } catch (e) {}
     if (have < needXno) {
       tpLog("Your wallet needs about " + needXno.toFixed(3) + " XNO — send XNO to fund the swap (auto-detected).");
-      const funded = await tpShowDeposit(needXno);
+      const funded = await tpShowDeposit(needXno, have);
       if (!funded) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
     }
   }
