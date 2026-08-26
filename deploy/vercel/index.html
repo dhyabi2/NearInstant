@@ -3824,11 +3824,12 @@ function tpShowDeposit(needXno, haveXno) {
     const el = $("tpDeposit"); if (!el || !tpWalletOpen()) { resolve(false); return; }
     const addr = walletApi.address();
     const short = Math.max(needXno - (haveXno || 0), 0.000001);
-    // Encode ONLY the address as a nano: URI. Adding ?amount= made some wallet
-    // scanners treat "nano_...?amount=..." as the address and reject it as
-    // invalid; the amount is shown as text instead. Matches the compatible
-    // form used elsewhere in the ecosystem.
-    const uri = "nano:" + addr;
+    // nano:<address>?amount=<raw> — Natrium et al. extract the address via
+    // findAccountInString and read amount from uri.queryParameters, so the QR
+    // pre-fills BOTH. (Earlier "invalid address" was a broken encoder, since
+    // replaced by qrcodegen, not this URI form.)
+    const raw = (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString();
+    const uri = "nano:" + addr + "?amount=" + raw;
     $("tpDepTitle").textContent = "Deposit XNO to fund your swap";
     $("tpDepMsg").textContent = "This swap needs about " + needXno.toFixed(3) + " XNO. Send at least " + short.toFixed(3) + " XNO to the address below (or scan the code) — it's detected automatically, no refresh needed.";
     if ($("tpDepQr")) { const drew = tpDrawQr($("tpDepQr"), uri); $("tpDepQr").style.display = drew ? "block" : "none"; }
