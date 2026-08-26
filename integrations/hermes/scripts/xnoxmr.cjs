@@ -178,6 +178,21 @@ async function fundableXno(seed, side, ask, args) {
   if (!(xmr > 0)) return { xno: null, reason: "side 1 sells XMR: declare the XMR you can fund with --xmr <amount> (or XNOXMR_XMR_LIQUIDITY) so the offer is backed — refusing to advertise XMR the wallet may not hold" };
   return { xno: ask > 0 ? xmr / ask : null, declaredXmr: xmr };
 }
+// The wire carries size as size_log2 — a power-of-two EXPONENT (8 bits), so the
+// size a taker decodes is quantised DOWN to 2^size_log2. Snap a requested size
+// to that on-chain-canonical value up front and certify/advertise/report THAT,
+// so the operator's number matches the book (requesting 800 XNO advertises
+// 2^109/1e30 ≈ 649). It is the safe direction (never over-advertises) but coarse
+// (up to ~2x under the request); precise sizes need a wider size field (a
+// versioned wire change), not this.
+function quantizeSize(reqXno) {
+  const reqRaw = BigInt(Math.round(reqXno * 1e6)) * (10n ** 24n);
+  const size_log2 = Math.max(0, Math.min(255, Math.floor(Math.log2(Number(reqRaw)))));
+  const advXno = Math.pow(2, size_log2 - Math.log2(1e30));
+  const advRaw = BigInt(Math.round(advXno * 1e6)) * (10n ** 24n);
+  return { size_log2, advXno, advRaw };
+}
+
 // Largest XNO a posted intent can carry: 2^size_log2 raw, exactly as the app.
 const maxXnoRawOf = (intent) => {
   const l = BigInt(Math.max(0, Math.min(255, intent.size_log2 | 0))); const sizeRaw = 2n ** l;
@@ -287,12 +302,15 @@ CMDS.offer = async (args) => {
   // Cap to what the wallet can actually fund; refuse rather than post phantom liquidity.
   const fund = await fundableXno(seed, side, ask, args);
   if (fund.xno == null) return die("refusing to post: " + fund.reason);
-  let sizeXno = Math.min(requested, fund.xno);
-  if (!(sizeXno > 0)) return die("refusing to post: no fundable balance to back this offer", { side, fundable_xno: fund.xno });
+  const wanted = Math.min(requested, fund.xno);
+  if (!(wanted > 0)) return die("refusing to post: no fundable balance to back this offer", { side, fundable_xno: fund.xno });
+  // Snap to the on-chain-representable size so what we certify, advertise, and
+  // report all equal what a taker decodes from the block.
+  const { size_log2, advXno, advRaw } = quantizeSize(wanted);
+  const sizeXno = advXno;
   const capped = sizeXno < requested;
-  const sizeRaw = BigInt(Math.round(sizeXno * 1e6)) * (10n ** 24n);
-  const intent = { side, price_e9: Math.round(ask * 1e9),
-                   size_log2: Math.max(0, Math.min(255, Math.floor(Math.log2(Number(sizeRaw))))) };
+  const sizeRaw = advRaw;
+  const intent = { side, price_e9: Math.round(ask * 1e9), size_log2 };
   // CERTIFIED WIN or nothing: a full fill at this ask, valued at the mid we
   // just validated, net of the Monero fee, must clear the floor - or we do not
   // post. Same certify() the app runs.
@@ -433,11 +451,14 @@ CMDS.tick = async (args) => {
       // Cap to fundable balance; refuse rather than advertise phantom liquidity.
       const fund = await fundableXno(seed, side, ask, args);
       if (fund.xno == null) { act("NOT posting: " + fund.reason); return; }
-      const sizeXno = Math.min(requested, fund.xno);
-      if (!(sizeXno > 0)) { act("NOT posting: no fundable balance to back an offer (fundable ~" + Number(fund.xno || 0).toFixed(3) + " XNO)"); return; }
-      if (sizeXno < requested) act("capped to fundable balance: " + sizeXno.toFixed(3) + " XNO (requested " + requested + ")");
-      const sizeRaw = BigInt(Math.round(sizeXno * 1e6)) * (10n ** 24n);
-      const intent = { side, price_e9: Math.round(ask * 1e9), size_log2: Math.max(0, Math.min(255, Math.floor(Math.log2(Number(sizeRaw))))) };
+      const wanted = Math.min(requested, fund.xno);
+      if (!(wanted > 0)) { act("NOT posting: no fundable balance to back an offer (fundable ~" + Number(fund.xno || 0).toFixed(3) + " XNO)"); return; }
+      // Snap to the on-chain-representable size so the reported/advertised figure matches the book.
+      const { size_log2, advXno, advRaw } = quantizeSize(wanted);
+      const sizeXno = advXno;
+      if (sizeXno < requested) act("size " + sizeXno.toFixed(3) + " XNO (requested " + requested + "; capped to fundable + quantised to the on-chain step)");
+      const sizeRaw = advRaw;
+      const intent = { side, price_e9: Math.round(ask * 1e9), size_log2 };
       const hyp = { xnoRaw: sizeRaw.toString(), priceE9: String(intent.price_e9), xmrAtomic: ((sizeRaw * BigInt(intent.price_e9) * 1000n) / (10n ** 30n)).toString() };
       const cert = TP.certify(hyp, side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() }, { minBps: MIN_ACCEPT_BPS });
       if (!cert.ok) { act("NOT posting: not a certified win (" + cert.reason + ")"); return; }

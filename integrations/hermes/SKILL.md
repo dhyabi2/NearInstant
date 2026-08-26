@@ -192,7 +192,10 @@ balance** and refuse rather than over-advertise:
   **refuses to post a side-1 offer** rather than advertise XMR it can't confirm.
 
 The post output reports `requested_xno`, `fundable_xno`, and `capped_to_fundable`
-so you can see when a request was trimmed. Never work around this — a phantom
+so you can see when a request was trimmed. The advertised size is also
+**quantised down to the wire's power-of-two step** (`size_log2`), so a request of
+800 XNO is posted and reported as ~649 — `size_xno` in the output is the true
+on-chain figure a taker decodes, never the raw request. Never work around this — a phantom
 offer wastes a taker's time and damages the book's credibility.
 
 ## Fees make small fills losers
