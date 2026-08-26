@@ -234,6 +234,8 @@
     font-family:inherit;font-size:1.02rem;font-weight:800;letter-spacing:.02em;cursor:pointer;overflow:hidden;margin-top:1.1rem}
   .btn.dark{background:var(--ink)}
   .btn:disabled{background:#bbb;border-color:#999;cursor:default}
+  /* action needed before you can proceed (unlock wallet / enter address) */
+  .btn.btn-need{background:#fff;color:var(--ink);font-size:.9rem}
   .btn .fill{position:absolute;inset:0;width:0%;background:rgba(255,255,255,.25);transition:width .3s}
   .btn .txt{position:relative;z-index:1}
   .btn.done{background:#0b0b0b}
@@ -1827,6 +1829,7 @@ async function walletRefresh(receiveFirst) {
 
 async function walletAfterOpen() {
   walletShell();
+  if (typeof tpBtnSync === "function") tpBtnSync();   // wallet now open → refresh the swap action button
   try { walletApi.liveReceive(() => walletRefresh(false)); } catch (e) {}
   // Show the Monero address for this wallet (same seed).
   try {
@@ -2413,7 +2416,10 @@ async function swOffersRefresh(force) {
       if (o.maker) right.append(mk("o-maker", String(o.maker).slice(0, 12) + "…"));
       card.append(right);
 
-      card.onclick = () => { swSelected = o; swSelRender(o); box.querySelectorAll(".ocard").forEach(e => e.classList.remove("on")); card.classList.add("on"); };
+      card.onclick = () => { swSelected = o; swSelRender(o); box.querySelectorAll(".ocard").forEach(e => e.classList.remove("on")); card.classList.add("on");
+        // Wallet must be unlocked to swap — ask up front, on selection.
+        if (!tpWalletOpen()) { if (typeof tpLog === "function") tpLog("Unlock your wallet first to swap this offer — tap the button below."); }
+        if (typeof tpBtnSync === "function") tpBtnSync(); };
       box.append(card);
     });
     // Auto-pick the cheapest offer that is IN-BAND vs market; never auto-select a
@@ -3006,12 +3012,26 @@ function tpDestInfo() {
 }
 function tpDestVal() { return ($("tpDest") && $("tpDest").value || "").trim(); }
 function tpDestOk() { return tpDestInfo().re.test(tpDestVal()); }
+// The action button demands the receive address BEFORE it ever offers to
+// review/confirm — so "Confirm: You pay…" can never appear without a destination.
+function tpWalletOpen() { try { return !!(walletApi && walletApi.address()); } catch (e) { return false; } }
+function tpBtnSync() {
+  const btn = $("tpTake"); if (!btn || tpPending) return;   // in confirm state: leave "Confirm: …"
+  const d = swSelected ? tpDealFromInput() : null;
+  const validDeal = d && !d.tooSmall && !d.unviable && !d.tooBig;
+  let label = "Review swap", need = false;
+  if (swSelected && !tpWalletOpen()) { label = "Unlock your wallet to swap"; need = true; }
+  else if (validDeal && !tpDestOk()) { label = "↑ Enter your " + tpDestInfo().coin + " address to continue"; need = true; }
+  btn.textContent = label;
+  btn.classList.toggle("btn-need", need);
+}
 function tpQuoteRender() {
   const q = $("tpQuote"); if (!q) return;
   $("tpAmount").placeholder = swSide === "xmr" ? "amount of XMR to sell" : "amount of XNO to sell";
   { const i = tpDestInfo(); if ($("tpDest")) $("tpDest").placeholder = i.ph;
     if ($("tpDestNote")) $("tpDestNote").textContent = "Your " + i.coin + " is sent straight to this external address — it never stays in this page's wallet."; }
   tpResetReview();
+  tpBtnSync();
   if (!swSelected) { q.textContent = "Pick a live offer above to get a quote."; return; }
   const d = tpDealFromInput();
   if (!d) { q.textContent = "Enter how much " + (swSide === "xmr" ? "XMR" : "XNO") + " you want to sell."; return; }
@@ -3058,7 +3078,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
   } catch (e) { tpLog("stopped: " + (e && e.message || e)); }
   finally { $("tpTake").disabled = false; tpResetReview(); }
 };
-if ($("tpDest")) $("tpDest").addEventListener("input", tpResetReview);
+if ($("tpDest")) $("tpDest").addEventListener("input", () => { tpResetReview(); tpBtnSync(); });
 if ($("tpWait")) $("tpWait").onclick = async () => {
   try {
     if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first."); appView("wallet"); return; }
