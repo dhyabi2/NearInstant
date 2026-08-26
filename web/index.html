@@ -2419,7 +2419,10 @@ async function swOffersRefresh(force) {
       card.onclick = () => { swSelected = o; swSelRender(o); box.querySelectorAll(".ocard").forEach(e => e.classList.remove("on")); card.classList.add("on");
         // Wallet must be unlocked to swap — ask up front, on selection.
         if (!tpWalletOpen()) { if (typeof tpLog === "function") tpLog("Unlock your wallet first to swap this offer — tap the button below."); }
-        if (typeof tpBtnSync === "function") tpBtnSync(); };
+        if (typeof tpBtnSync === "function") tpBtnSync();
+        // Move the cursor into the amount field and bring it into view.
+        const amt = $("tpAmount");
+        if (amt) { try { amt.focus({ preventScroll: true }); amt.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { try { amt.focus(); } catch (e2) {} } } };
       box.append(card);
     });
     // Auto-pick the cheapest offer that is IN-BAND vs market; never auto-select a
