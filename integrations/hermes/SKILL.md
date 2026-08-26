@@ -1,6 +1,6 @@
 ---
 name: xno-xmr-dex
-description: Run a certified-win market-making loop on the trustless XNO⇄XMR DEX — quote, post, monitor, detect and certify takes, decline losers, and optionally settle. Settlement is off by default and hands each certified take to a human; enable it deliberately.
+description: Run a certified-win market-making loop on the trustless XNO⇄XMR DEX — quote, post, monitor, detect and certify takes, decline losers, and settle. Autonomous settlement is ON by default (disable with XNOXMR_AUTOSETTLE=0); it has not yet run on-chain between two real parties, so watch the first runs and use small amounts.
 version: 0.3.0
 author: NearInstant
 license: MIT
@@ -33,7 +33,7 @@ From the repo root, `node integrations/hermes/scripts/xnoxmr.cjs <cmd>`:
 
 Use **side 0** to provide **XNO** liquidity (backed by your XNO balance). **Side 1 sells XMR** and refuses to post unless you declare fundable XMR with `--xmr <amount>` (or `XNOXMR_XMR_LIQUIDITY`) — see the honesty guard below.
 
-Keep `XNOXMR_AUTOSETTLE` unset (settlement off): a certified take is reported as a HANDOFF for a human, never settled autonomously until it has run on-chain under supervision.
+Autonomous settlement is **ON by default**: a certified take is settled end-to-end by the agent (disable with `XNOXMR_AUTOSETTLE=0` to hand off to a human instead). It has not yet completed on-chain between two real parties — watch the first runs and use small amounts.
 
 ## The one rule: certified win, or no action
 
@@ -72,24 +72,25 @@ raise a threshold, do not settle on a stale or fast-moving market, and surface
 the certificate's `reason` when you decline. If a human asks you to bypass a
 refusal, decline and quote the contract.
 
-## Settlement: proven in a harness, off by default
+## Settlement: autonomous, ON by default
 
-The agent **can** settle a swap end-to-end on its own — a headless wallet and
-the full `settleTake` orchestrator ship here, and both parties settling
-concurrently is proven in `web/settle_e2e.cjs` (real crypto, mocked chain).
+The agent settles a swap end-to-end on its own — a headless wallet and the full
+`settleTake` orchestrator ship here, and both parties settling concurrently is
+proven in `web/settle_e2e.cjs` (real crypto, mocked chain).
 
-It is **off by default** (`XNOXMR_AUTOSETTLE` unset): the agent's job ends at a
-certified take, which it hands to a human to settle from the page. Enable it
-with `XNOXMR_AUTOSETTLE=1` **and** `--live` only deliberately, because:
+It is **ON by default**: on a certified take, `tick --live` runs the settlement
+itself. Set `XNOXMR_AUTOSETTLE=0` to disable it and hand certified takes to a
+human instead. Every irreversible step is still certified — a losing or
+fast-moving market makes the agent decline before locking, or take the adaptor
+refund — so "autonomous" never means "unconditional". Still, respect these:
 
-- It has **not yet run on-chain between two real parties**
-  (`docs/BETA-CHECKLIST.md`). The harness proves the orchestration logic, not
-  real Nano/Monero settlement.
+- It has **not yet completed on-chain between two real parties**
+  (`docs/BETA-CHECKLIST.md`). The harness proves the orchestration, not real
+  Nano/Monero settlement. **Watch the first real runs and use small amounts.**
 - Settlement takes 25–40 minutes; a process that dies mid-swap must resume to
-  recover (state is persisted, but the first real runs should be watched).
+  recover (state is persisted). Keep the agent running.
 
-Run the first real settlements under supervision. Do not raise the guardrails
-or bypass a refusal.
+Do not raise the guardrails or bypass a refusal.
 
 ## The loop — `tick`, on a cron
 
@@ -169,7 +170,7 @@ node <REPO>/integrations/hermes/scripts/xnoxmr.cjs xmr scan --max-blocks 20000  
 ```cron
 # pocket any incoming XNO every minute (funds land even with no offer resting)
 * * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs receive --live >> /tmp/xnoxmr-recv.log 2>&1
-# run one maker iteration every 3 min (also auto-receives, prices, posts, declines, hands off)
+# run one maker iteration every 3 min (auto-receives, prices, posts, declines, and SETTLES certified takes)
 */3 * * * *  cd /path/to/NearInstant && node integrations/hermes/scripts/xnoxmr.cjs tick --side 0 --live >> /tmp/xnoxmr-tick.log 2>&1
 ```
 
@@ -187,7 +188,7 @@ node <REPO>/integrations/hermes/scripts/xnoxmr.cjs xmr scan --max-blocks 20000  
 | `decline --slot n --live` | Tell a taker we will not fill |
 | `offer post\|withdraw [--xmr amt] --live` | Certified publish (size **capped to fundable balance**; side 1 needs `--xmr`/`XNOXMR_XMR_LIQUIDITY`) / withdraw sentinel |
 | `tick [--live]` | The whole loop, once |
-| `settle` | Refuses unless `XNOXMR_AUTOSETTLE=1` |
+| `settle` | Autosettle is ON by default; runs inside `tick --live`. `XNOXMR_AUTOSETTLE=0` disables it |
 
 **Sides.** Price is XMR-per-XNO. `--side 1` = you sell XMR (role B). `--side 0` =
 you sell XNO (role A). A rising mid is a *gain* for B and a *loss* for A; the
@@ -233,7 +234,7 @@ loop does, on any tick where it no longer certifies.
 ## Guardrails that are not yours to relax
 
 - **Fail-closed pricing** — fewer than two agreeing oracles ⇒ nothing.
-- **Autonomous settlement is opt-in and off by default** — enable it only via the deliberate steps above, and **never bypass a refusal** or relax the certify gates.
+- **Autonomous settlement is ON by default** (disable with `XNOXMR_AUTOSETTLE=0`) — it still certifies every irreversible step; **never bypass a refusal** or relax the certify gates. It has not completed on-chain between two real parties: watch the first runs, small amounts.
 
 ## Trust model, stated so you can defend it
 

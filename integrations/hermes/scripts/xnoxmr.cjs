@@ -607,23 +607,18 @@ function fileStore(sessionId) {
   return { get: (k) => { const o = read(); return k in o ? o[k] : null; },
            set: (k, v) => { const o = read(); o[k] = v; fs.writeFileSync(f, JSON.stringify(o)); try { fs.chmodSync(f, 0o600); } catch (e) {} } };
 }
-const AUTOSETTLE = env("XNOXMR_AUTOSETTLE", "0") === "1";
+// Autonomous settlement is ON by default; disable only with XNOXMR_AUTOSETTLE=0.
+const AUTOSETTLE = env("XNOXMR_AUTOSETTLE", "1") !== "0";
 
 CMDS.settle = async () => {
   if (!AUTOSETTLE) { out({
     ok: false,
-    refused: "autonomous settlement is OFF (set XNOXMR_AUTOSETTLE=1 to enable)",
-    why: [
-      "The person-to-person swap has never completed on-chain between two browsers.",
-      "docs/BETA-CHECKLIST.md is unrun.",
-      "Settlement takes 25-40 minutes (10 Monero confirmations). A process that dies mid-swap must resume to observe the counterparty and act; the state file makes that possible but the FIRST real runs should be watched.",
-      "The swap has never completed on-chain between two browsers, so the FIRST real settlements should be watched by a human even though the machine can now run them."
-    ],
-    do_instead: "Enable it deliberately: XNOXMR_AUTOSETTLE=1 with --live, after running docs/BETA-CHECKLIST.md once by hand. Until then, tick hands off certified takes for a human to settle from the page."
+    refused: "autonomous settlement is DISABLED (you set XNOXMR_AUTOSETTLE=0). Unset it to re-enable — it is ON by default.",
+    do_instead: "With autosettle on, settlement runs inside `tick --live`; a certified take is settled autonomously instead of handed off."
   });
   process.exit(2); }
-  out({ ok: true, note: "autonomous settlement is ENABLED. It runs inside `tick --live`; nothing to settle standalone.",
-        reminder: "every irreversible step is still certified; a losing or fast-moving market aborts safely (decline / refund)." });
+  out({ ok: true, note: "autonomous settlement is ENABLED (default). It runs inside `tick --live`; nothing to settle standalone.",
+        reminder: "every irreversible step is still certified; a losing or fast-moving market aborts safely (decline / refund). It has NOT yet completed on-chain between two real parties — watch the first real runs and use small amounts." });
 };
 
 CMDS.help = async () => out({
