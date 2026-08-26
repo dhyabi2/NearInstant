@@ -450,9 +450,9 @@ CMDS.tick = async (args) => {
       const requested = args.size ? parseFloat(args.size) : DEFAULT_OFFER_XNO;
       // Cap to fundable balance; refuse rather than advertise phantom liquidity.
       const fund = await fundableXno(seed, side, ask, args);
-      if (fund.xno == null) { act("NOT posting: " + fund.reason); return; }
+      if (fund.xno == null) { act("NOT posting: " + fund.reason); return "refused"; }
       const wanted = Math.min(requested, fund.xno);
-      if (!(wanted > 0)) { act("NOT posting: no fundable balance to back an offer (fundable ~" + Number(fund.xno || 0).toFixed(3) + " XNO)"); return; }
+      if (!(wanted > 0)) { act("NOT posting: no fundable balance to back an offer (fundable ~" + Number(fund.xno || 0).toFixed(3) + " XNO)"); return "refused"; }
       // Snap to the on-chain-representable size so the reported/advertised figure matches the book.
       const { size_log2, advXno, advRaw } = quantizeSize(wanted);
       const sizeXno = advXno;
@@ -461,11 +461,11 @@ CMDS.tick = async (args) => {
       const intent = { side, price_e9: Math.round(ask * 1e9), size_log2 };
       const hyp = { xnoRaw: sizeRaw.toString(), priceE9: String(intent.price_e9), xmrAtomic: ((sizeRaw * BigInt(intent.price_e9) * 1000n) / (10n ** 30n)).toString() };
       const cert = TP.certify(hyp, side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() }, { minBps: MIN_ACCEPT_BPS });
-      if (!cert.ok) { act("NOT posting: not a certified win (" + cert.reason + ")"); return; }
-      if (!live) { act("DRY: would post " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps)"); return; }
+      if (!cert.ok) { act("NOT posting: not a certified win (" + cert.reason + ")"); return "refused"; }
+      if (!live) { act("DRY: would post " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps)"); return "would"; }
       const block = await beacon.publish(NANO_NODES, seed, PAIR, intent, () => {});
       st.offer = { block: String(block).toLowerCase(), intent, side, sizeXno, mid: pr.mid, ask, bps, cert, at: Date.now() }; stSave(st);
-      act("posted " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps) " + String(block).slice(0, 10)); };
+      act("posted " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps) " + String(block).slice(0, 10)); return "posted"; };
 
     // 1. no trustworthy price -> nothing may rest on the book
     if (!pr.ok) { act("oracle unhealthy: " + pr.reason); if (st.offer) await publishWithdraw(); return out({ ok: true, live, actions: log, verdict: "PAUSED" }); }
@@ -499,13 +499,21 @@ CMDS.tick = async (args) => {
     }
     // 3. the resting offer itself
     const status = await offerStatus();
+    let postOutcome = null;   // "posted" | "would" | "refused" — what publishPost actually did this cycle
     if (handoff) { act("holding the offer for the human settling the certified take"); }
-    else if (!status.hasOffer) { act("no offer resting"); await publishPost(); }
+    else if (!status.hasOffer) { act("no offer resting"); postOutcome = await publishPost(); }
     else if (status.verdict === "HOLD") act("HOLD: " + status.reason);
     else if (status.verdict === "WITHDRAW") { act("WITHDRAW: " + status.reason); await publishWithdraw(); }
-    else { act(status.verdict + ": " + status.reason); await publishWithdraw(); await publishPost(); }
+    else { act(status.verdict + ": " + status.reason); await publishWithdraw(); postOutcome = await publishPost(); }
+    // Verdict reflects what ACTUALLY happened. When there was a resting offer,
+    // status.verdict (HOLD/WITHDRAW/REPRICE/REPOST) is the meaningful outcome.
+    // When there was NO offer, the outcome is POSTED only if we truly posted —
+    // otherwise REFUSE (bug fix: it used to default to POSTED on a refusal).
+    const postVerdict = postOutcome === "posted" ? "POSTED"
+                      : postOutcome === "would" ? "WOULD_POST"
+                      : postOutcome === "refused" ? "REFUSE" : null;
     out({ ok: true, live, received, autosettle: AUTOSETTLE, settled: settled ? { realized: settled.realized || null } : null,
-          verdict: settled ? "SETTLED" : handoff ? (AUTOSETTLE ? "SETTLING" : "HANDOFF") : (status.verdict || (live ? "POSTED" : "WOULD_POST")), actions: log,
+          verdict: settled ? "SETTLED" : handoff ? (AUTOSETTLE ? "SETTLING" : "HANDOFF") : (status.verdict || postVerdict || (live ? "POSTED" : "WOULD_POST")), actions: log,
           handoff: handoff ? { block: st.offer.block, slot: handoff.slot, deal: handoff.deal, certificate: handoff.cert,
                                next: "A human opens https://www.nearinstant.xyz, unlocks the maker wallet, and settles. This agent will not." } : null,
           offer: stLoad().offer ? { block: stLoad().offer.block, ask: stLoad().offer.ask, sizeXno: stLoad().offer.sizeXno, ageSeconds: Math.round((Date.now() - stLoad().offer.at) / 1000) } : null });
