@@ -95,6 +95,9 @@ export class BrowserSigner {
     presign_commit(message: Uint8Array, adaptor_point: Uint8Array): Uint8Array;
     /**
      * Produce our adaptor signature share (also kept for aggregation).
+     *
+     * CONSUMES the round's nonces (`take()`) for the same reason as
+     * `sign_share`: single-use per nonce pair, or the secret share leaks.
      */
     presign_share(): Uint8Array;
     /**
@@ -111,6 +114,12 @@ export class BrowserSigner {
     sign_commit(message: Uint8Array): Uint8Array;
     /**
      * Produce our plain signature share (also kept for aggregation).
+     *
+     * CONSUMES the round's nonces (`take()`): a FROST signing nonce pair must
+     * sign exactly ONE message. Producing a second share from the same nonces
+     * against a different peer commitment yields a solvable linear system that
+     * recovers our long-term secret share, so a second call here fails closed
+     * ("call sign_commit first") rather than reusing the nonce.
      */
     sign_share(): Uint8Array;
 }

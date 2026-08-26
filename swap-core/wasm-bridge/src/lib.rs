@@ -693,21 +693,30 @@ impl BrowserSigner {
     }
 
     /// Produce our plain signature share (also kept for aggregation).
+    ///
+    /// CONSUMES the round's nonces (`take()`): a FROST signing nonce pair must
+    /// sign exactly ONE message. Producing a second share from the same nonces
+    /// against a different peer commitment yields a solvable linear system that
+    /// recovers our long-term secret share, so a second call here fails closed
+    /// ("call sign_commit first") rather than reusing the nonce.
     pub fn sign_share(&mut self) -> Result<Vec<u8>, JsValue> {
-        let nonces = self.nonces.as_ref().ok_or_else(|| jsmsg("call sign_commit first"))?;
+        let nonces = self.nonces.take().ok_or_else(|| jsmsg("call sign_commit first"))?;
         let pkg = SigningPackage::new(self.comms.clone(), &self.message);
-        let share = round2::sign(&pkg, nonces, &self.kp).map_err(jserr)?;
+        let share = round2::sign(&pkg, &nonces, &self.kp).map_err(jserr)?;
         self.shares.insert(*self.kp.identifier(), share);
         self.package = Some(pkg);
         Ok(share.serialize().as_slice().to_vec())
     }
 
     /// Produce our adaptor signature share (also kept for aggregation).
+    ///
+    /// CONSUMES the round's nonces (`take()`) for the same reason as
+    /// `sign_share`: single-use per nonce pair, or the secret share leaks.
     pub fn presign_share(&mut self) -> Result<Vec<u8>, JsValue> {
-        let nonces = self.nonces.as_ref().ok_or_else(|| jsmsg("call presign_commit first"))?;
+        let nonces = self.nonces.take().ok_or_else(|| jsmsg("call presign_commit first"))?;
         let t = self.adaptor_point.ok_or_else(|| jsmsg("no adaptor point set"))?;
         let session = AdaptorSession::new(self.comms.clone(), &self.message, &t).map_err(jserr)?;
-        let share = adaptor_sign(&session, nonces, &self.kp).map_err(jserr)?;
+        let share = adaptor_sign(&session, &nonces, &self.kp).map_err(jserr)?;
         self.shares.insert(*self.kp.identifier(), share);
         self.session = Some(session);
         Ok(share.serialize().as_slice().to_vec())
