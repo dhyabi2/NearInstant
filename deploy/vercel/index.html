@@ -272,6 +272,10 @@
   .obk .ep.on{background:var(--ink);color:#fff}
   .obk .ep.on .lat{color:#bbb}
   .obk-sel{font-size:.78rem;font-weight:750;margin-top:.45rem;border-top:2px solid var(--ink);padding-top:.45rem}
+  .swrates{font-size:.72rem;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;
+    margin-top:.5rem;padding-top:.4rem;border-top:1.5px dashed #dcdcdc;letter-spacing:.01em}
+  .swrates .rlbl{font-size:.6rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .swrates b{color:var(--ink);font-weight:800}
   .dot{width:.55rem;height:.55rem;background:#cfcfcf;flex:0 0 auto}
   .dot.ok{background:#0b0b0b} .dot.bad{background:#fff;border:2px solid #0b0b0b} .dot.chk{background:#c9c9c9}
   .url{flex:1;min-width:0;font-size:.72rem;word-break:break-all;font-family:ui-monospace,monospace}
@@ -506,6 +510,7 @@
             <div class="obk-head"><span class="lbl" style="margin:0">Live offers · best price first</span><button class="obk-ref" id="swOffersRef">Refresh</button></div>
             <div id="swOffers" class="obk-list">Reading live offers from the ledger…</div>
             <div class="obk-sel hidden" id="swSel"></div>
+            <div class="swrates" id="swRates" style="display:none"></div>
           </div>
 
           <!-- peer: REAL two-party swap with ANOTHER person's browser over the
@@ -2172,6 +2177,25 @@ const SW_WORSE_BAND = 0.03;   // >3% worse than market for the taker ⇒ exclude
 const SW_BETTER_BAND = 0.25;  // better than market is welcome, up to 25% (sanity)
 let swLastMid = null;
 let swXnoUsd = null;   // live USD price of 1 XNO, from the same 2-source oracle
+let swXmrUsd = null;   // live USD price of 1 XMR (same oracle) — for the reference-rate strip
+// Precise dollar rate for the reference strip (cents kept): $0.40, $430.22.
+function fmtUsdRate(v) { return "$" + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Show "1 XNO ≈ $Y · 1 XMR ≈ $X" under the book so a dollar-thinking user has
+// the reference prices alongside the XMR/XNO offers. Fail-quiet if no oracle.
+function swRatesRender() {
+  const el = $("swRates"); if (!el) return;
+  el.textContent = "";
+  if (!(swXnoUsd > 0) && !(swXmrUsd > 0)) { el.style.display = "none"; return; }
+  const lab = document.createElement("span"); lab.className = "rlbl"; lab.textContent = "Reference rates"; el.append(lab);
+  const add = (coin, usd) => {
+    if (!(usd > 0)) return;
+    el.append(document.createTextNode("   "));
+    const b = document.createElement("b"); b.textContent = "1 " + coin; el.append(b);
+    el.append(document.createTextNode(" ≈ " + fmtUsdRate(usd)));
+  };
+  add("XNO", swXnoUsd); add("XMR", swXmrUsd);
+  el.style.display = "";
+}
 // Human dollar figure: cents under $100, whole dollars under $1k, then $1.2k.
 function fmtUsd(v) {
   if (!(v > 0)) return "";
@@ -2234,7 +2258,8 @@ function swAgo(sec) {
 // (decoded price + amount + age) so the market reads as quiet, not broken.
 async function swRenderEmpty(box, raw, side) {
   box.className = ""; box.innerHTML = "";
-  try { const pr = await marketPrice(); if (pr && pr.ok && pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; } catch (e) {}
+  try { const pr = await marketPrice(); if (pr && pr.ok) { if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; if (pr.xmrUsd > 0) swXmrUsd = pr.xmrUsd; } } catch (e) {}
+  swRatesRender();
   const wrap = document.createElement("div"); wrap.className = "oempty";
   const h = document.createElement("h4");
   const dot = document.createElement("span"); dot.className = "dot"; h.append(dot);
@@ -2311,7 +2336,8 @@ async function swOffersRefresh(force) {
     // Fail-closed market mid for the taker-side sanity guard (best-effort: the
     // list still shows if the price feed is unavailable, just without fairness).
     swLastMid = null;
-    try { const pr = await marketPrice(); if (pr && pr.ok) { swLastMid = pr.mid; if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; } } catch (e) {}
+    try { const pr = await marketPrice(); if (pr && pr.ok) { swLastMid = pr.mid; if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; if (pr.xmrUsd > 0) swXmrUsd = pr.xmrUsd; } } catch (e) {}
+    swRatesRender();
     box.className = "olist";
     const inBand = (o) => swInBand(o);
     const mk = (cls, txt) => { const e = document.createElement("div"); e.className = cls; if (txt != null) e.textContent = txt; return e; };
