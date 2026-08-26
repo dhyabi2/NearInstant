@@ -543,7 +543,7 @@
             <div id="tpDeposit" style="display:none;margin-top:.6rem;border:2px solid var(--ink);background:#fff;box-shadow:4px 4px 0 var(--ink);padding:.9rem">
               <div style="font-weight:850;font-size:.95rem" id="tpDepTitle">Fund your swap</div>
               <div class="sub" id="tpDepMsg" style="margin-top:.25rem"></div>
-              <canvas id="tpDepQr" style="margin:.6rem auto .2rem;display:block;image-rendering:pixelated;border:2px solid var(--ink)"></canvas>
+              <canvas id="tpDepQr" style="margin:.6rem auto .2rem;display:block;image-rendering:pixelated;background:#fff;padding:6px"></canvas>
               <div class="mono" id="tpDepAddr" style="margin-top:.5rem;font-size:.72rem;word-break:break-all;border:2px solid var(--ink);padding:.5rem;background:#f7f7f7;user-select:all"></div>
               <div style="display:flex;gap:.5rem;margin-top:.5rem">
                 <button id="tpDepCopy" style="font-family:inherit;font-weight:800;font-size:.78rem;padding:.4rem .8rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Copy address</button>
@@ -3133,7 +3133,7 @@ const qrMatrix = (function () {
 // Draw a QR matrix onto a canvas with a quiet zone, crisp square modules.
 function tpDrawQr(canvas, text) {
   try {
-    const m = qrMatrix(text); const n = m.length, quiet = 4, px = 5, size = (n + quiet * 2) * px;
+    const m = qrMatrix(text); const n = m.length, quiet = 4, px = 6, size = (n + quiet * 2) * px;
     canvas.width = size; canvas.height = size; canvas.style.width = size + "px"; canvas.style.height = size + "px";
     const ctx = canvas.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size); ctx.fillStyle = "#0b0b0b";
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) ctx.fillRect((c + quiet) * px, (r + quiet) * px, px, px);
@@ -3147,10 +3147,11 @@ function tpShowDeposit(needXno, haveXno) {
     const el = $("tpDeposit"); if (!el || !tpWalletOpen()) { resolve(false); return; }
     const addr = walletApi.address();
     const short = Math.max(needXno - (haveXno || 0), 0.000001);
-    // Encode a nano: payment URI (address + amount in raw) so a scanning wallet
-    // pre-fills both. Amount is the shortfall to reach the funded target.
-    const raw = (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString();
-    const uri = "nano:" + addr + "?amount=" + raw;
+    // Encode ONLY the address as a nano: URI. Adding ?amount= made some wallet
+    // scanners treat "nano_...?amount=..." as the address and reject it as
+    // invalid; the amount is shown as text instead. Matches the compatible
+    // form used elsewhere in the ecosystem.
+    const uri = "nano:" + addr;
     $("tpDepTitle").textContent = "Deposit XNO to fund your swap";
     $("tpDepMsg").textContent = "This swap needs about " + needXno.toFixed(3) + " XNO. Send at least " + short.toFixed(3) + " XNO to the address below (or scan the code) — it's detected automatically, no refresh needed.";
     if ($("tpDepQr")) { const drew = tpDrawQr($("tpDepQr"), uri); $("tpDepQr").style.display = drew ? "block" : "none"; }
