@@ -531,6 +531,16 @@
             <div class="sub" id="tpDestNote" style="margin-top:.25rem;font-size:.72rem">Your received coins are sent straight to this external address — they never stay in this page's wallet.</div>
             <div class="obk-sel" id="tpQuote" style="margin-top:.4rem">Pick an offer and enter an amount to see the exact quote.</div>
             <button id="tpTake" class="btn" style="margin-top:.6rem">Review swap</button>
+            <div id="tpDeposit" style="display:none;margin-top:.6rem;border:2px solid var(--ink);background:#fff;box-shadow:4px 4px 0 var(--ink);padding:.9rem">
+              <div style="font-weight:850;font-size:.95rem" id="tpDepTitle">Fund your swap</div>
+              <div class="sub" id="tpDepMsg" style="margin-top:.25rem"></div>
+              <div class="mono" id="tpDepAddr" style="margin-top:.5rem;font-size:.72rem;word-break:break-all;border:2px solid var(--ink);padding:.5rem;background:#f7f7f7;user-select:all"></div>
+              <div style="display:flex;gap:.5rem;margin-top:.5rem">
+                <button id="tpDepCopy" style="font-family:inherit;font-weight:800;font-size:.78rem;padding:.4rem .8rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Copy address</button>
+                <button id="tpDepCancel" style="font-family:inherit;font-weight:800;font-size:.78rem;padding:.4rem .8rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Cancel</button>
+              </div>
+              <div class="sub" id="tpDepStatus" style="margin-top:.55rem;font-weight:800;color:var(--burnt)"></div>
+            </div>
             <pre class="swlog" id="tpLog" style="margin-top:.5rem;max-height:16rem;overflow:auto">idle</pre>
             <details style="margin-top:.6rem">
               <summary class="hint" style="cursor:pointer">I posted an offer myself (maker tools)</summary>
@@ -3018,6 +3028,35 @@ function tpDestOk() { return tpDestInfo().re.test(tpDestVal()); }
 // The action button demands the receive address BEFORE it ever offers to
 // review/confirm — so "Confirm: You pay…" can never appear without a destination.
 function tpWalletOpen() { try { return !!(walletApi && walletApi.address()); } catch (e) { return false; } }
+// Guided deposit: the wallet lacks enough XNO to fund the swap, so show its
+// address + the amount needed and watch the balance live. liveReceive (a Nano
+// websocket started on unlock) auto-pockets any incoming XNO and validates it
+// on-chain; we poll the balance to detect when it clears the target, then
+// resolve so the swap can continue. Resolves false if the user cancels.
+let tpDepTimer = null;
+function tpHideDeposit() { if (tpDepTimer) { clearInterval(tpDepTimer); tpDepTimer = null; } const el = $("tpDeposit"); if (el) el.style.display = "none"; }
+function tpShowDeposit(needXno) {
+  return new Promise((resolve) => {
+    const el = $("tpDeposit"); if (!el || !tpWalletOpen()) { resolve(false); return; }
+    const addr = walletApi.address();
+    $("tpDepTitle").textContent = "Deposit XNO to fund your swap";
+    $("tpDepMsg").textContent = "This swap needs about " + needXno.toFixed(3) + " XNO in your wallet. Send XNO to your address below — it's detected automatically, no need to refresh.";
+    $("tpDepAddr").textContent = addr;
+    $("tpDepStatus").textContent = "● Waiting for your deposit…";
+    el.style.display = ""; try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    $("tpDepCopy").onclick = () => { try { navigator.clipboard.writeText(addr).then(() => { $("tpDepCopy").textContent = "Copied ✓"; setTimeout(() => { $("tpDepCopy").textContent = "Copy address"; }, 1500); }); } catch (e) {} };
+    let done = false;
+    $("tpDepCancel").onclick = () => { if (done) return; done = true; tpHideDeposit(); resolve(false); };
+    tpDepTimer = setInterval(async () => {
+      if (done) return;
+      try {
+        const b = await walletApi.balance(); const have = parseFloat((b && b.xno) || "0");
+        if (have >= needXno) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(4) + " XNO in wallet. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
+        else if (have > 0) { $("tpDepStatus").textContent = "● Received " + have.toFixed(4) + " XNO so far — need " + needXno.toFixed(3) + ". Waiting…"; }
+      } catch (e) {}
+    }, 3000);
+  });
+}
 function tpBtnSync() {
   const btn = $("tpTake"); if (!btn || tpPending) return;   // in confirm state: leave "Confirm: …"
   const d = swSelected ? tpDealFromInput() : null;
@@ -3069,10 +3108,32 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     return;
   }
   const deal = tpPending; const extDest = deal.dest; tpResetReview();
+  // Fund check (selling XNO): the wallet must hold enough XNO to post the
+  // take-request AND fund the joint. If short, guide a live-detected deposit
+  // before anything is posted — no more cryptic "identity balance too low".
+  if (swSide === "xno") {
+    const needXno = Number(BigInt(deal.xnoRaw) / (10n ** 24n)) / 1e6 + 0.01;
+    let have = 0; try { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); } catch (e) {}
+    if (have < needXno) {
+      tpLog("Your wallet needs about " + needXno.toFixed(3) + " XNO — send XNO to fund the swap (auto-detected).");
+      const funded = await tpShowDeposit(needXno);
+      if (!funded) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+    }
+  }
   try {
     $("tpTake").disabled = true; tpLog("loading engine…"); await tpEnsure();
     const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
     const roleIsA = deal.side === 1;
+    // The take-request posts from the page identity — top it up with a little
+    // XNO from the funded wallet so posting never fails on an empty identity.
+    try {
+      const idAddr = JSON.parse(expWasm.seed_account(expSeed())).address;
+      const idInfo = await expBeacon.accountInfo(rpcState.nano, idAddr).catch(() => null);
+      if (!(idInfo && BigInt(idInfo.balance || "0") > 0n)) {
+        const b = await walletApi.balance();
+        if (b.opened && parseFloat(b.xno) >= 0.005) { tpLog("funding the posting identity…"); await walletApi.send(idAddr, "0.002"); }
+      }
+    } catch (e) {}
     tpLog("posting take-request + waiting for the maker…");
     const hs = await TP.takerHandshake(M, tpRelay(), swSelected, deal, tpLog);
     await tpRun(hs, deal, roleIsA, String(deal.offerHash).toLowerCase() + "-T", tpLog, "taker", extDest);
