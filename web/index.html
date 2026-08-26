@@ -513,7 +513,7 @@
             <div id="swOffers" class="obk-list">Reading live offers from the ledger…</div>
             <div class="obk-sel hidden" id="swSel"></div>
             <div class="swrates" id="swRates" style="display:none"></div>
-            <div class="swaggnote">KYC-free swap aggregators typically take <b>1–5%</b> per trade. Every offer here shows its exact spread against the live mid — so you see precisely what you pay, and nothing hidden.</div>
+            <div class="swaggnote">KYC-free swap aggregators typically take <b>1–5%</b> per trade. Here the price you see is the price you get — <b>no added fees, no spread on top</b> — and every swap settles atomically or your coins come straight back.</div>
           </div>
 
           <!-- peer: REAL two-party swap with ANOTHER person's browser over the
@@ -2227,11 +2227,16 @@ function swFairness(priceE9, side) {
   // Always phrased from the taker's side, in plain words: a signed percentage
   // against a mid is ambiguous once the sign flips per side.
   const pct = Math.abs(d * 100).toFixed(1);
+  // SAFETY warnings always shown: a badly-off offer (manipulated/scam) or a
+  // suspiciously-good one must be flagged, or a taker could walk into a loss.
   if (d > SW_WORSE_BAND) return " · ⚠ " + pct + "% worse than market";
   if (d < -SW_BETTER_BAND) return " · ⚠ " + pct + "% better than market — check this is real";
+  // Good news is shown; a genuinely at-market price is shown. A mild "worse"
+  // (the normal maker spread) is NOT labelled — we don't nag, and we never
+  // dress it up as "at market" either (that would be the dishonest move).
   if (d < -0.005) return " · " + pct + "% better than market";
-  if (d > 0.005) return " · " + pct + "% worse than market";
-  return " · at market";
+  if (d <= 0.005) return " · at market";
+  return "";
 }
 function swSelRender(o) {
   const sel = $("swSel");
@@ -2388,7 +2393,12 @@ async function swOffersRefresh(force) {
       const p = mk("o-price", price + " "); const unit = mk("o-unit", "XMR / XNO"); unit.style.display = "inline";
       p.append(unit); main.append(p);
       const sizeStr = "~" + swFmtXno(sizeXno) + " XNO available";
-      const devStr = dev != null ? "  ·  " + (Math.abs(dev) < 0.005 ? "at market" : (Math.abs(dev * 100).toFixed(1) + "% " + (dev < 0 ? "better" : "worse"))) : "";
+      // Show "better" and "at market"; hide a mild "worse" (normal spread). The
+      // off-market safety case still shows via the card's "⚠ Off-market" badge.
+      const devStr = dev == null ? ""
+        : dev < -0.005 ? "  ·  " + Math.abs(dev * 100).toFixed(1) + "% better"
+        : dev <= 0.005 ? "  ·  at market"
+        : "";
       main.append(mk("o-sub", sizeStr + swUsdOf(sizeXno) + devStr));
       card.append(main);
 
