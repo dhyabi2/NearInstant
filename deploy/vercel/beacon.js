@@ -238,8 +238,14 @@
       // entries are dropped by the codec, duplicates by block hash.
       async scan(urls, pair, side) {
         const account = wasm.beacon_address(pair, side);
+        // The beacon namespace account is shared and its sentinels are never
+        // pocketed, so every post/reprice/repost piles up on it. `count:"100"`
+        // returns an arbitrary/oldest 100 that can EXCLUDE the current live
+        // offer entirely (one churny maker then hides the whole book). count:"0"
+        // means NONE on some nodes, so request a high explicit count to pull the
+        // full set — scanLive's newest-per-maker then always sees the latest.
         const j = await rpc(urls, {
-          action: "receivable", account, count: "100", threshold: "1", source: "true",
+          action: "receivable", account, count: "10000", threshold: "1", source: "true",
         }, fetchFn);
         const blocks = j && j.blocks && typeof j.blocks === "object" ? j.blocks : {};
         const out = [], seen = new Set();
@@ -276,15 +282,18 @@
         // per-maker sequence — every offer is a send from the same account, so
         // height only ever increases) and `local_timestamp` (for expiry).
         const meta = {};
-        try {
-          const j = await rpc(urls, { action: "blocks_info", json_block: "true",
-            hashes: raw.map(r => r.blockHash) }, fetchFn);
-          const b = j && j.blocks ? j.blocks : {};
-          for (const h of Object.keys(b)) meta[h] = {
-            height: parseInt(b[h].height || "0", 10) || 0,
-            ts: parseInt(b[h].local_timestamp || "0", 10) || 0,
-          };
-        } catch (e) { /* no meta ⇒ order by height 0, cancel still wins ties */ }
+        const allHashes = raw.map(r => r.blockHash);
+        for (let i = 0; i < allHashes.length; i += 200) {   // chunk: hundreds of sentinels won't fit one blocks_info body
+          try {
+            const j = await rpc(urls, { action: "blocks_info", json_block: "true",
+              hashes: allHashes.slice(i, i + 200) }, fetchFn);
+            const b = j && j.blocks ? j.blocks : {};
+            for (const h of Object.keys(b)) meta[h] = {
+              height: parseInt(b[h].height || "0", 10) || 0,
+              ts: parseInt(b[h].local_timestamp || "0", 10) || 0,
+            };
+          } catch (e) { /* this batch has no meta ⇒ those order by height 0 */ }
+        }
         for (const r of raw) { const m = meta[r.blockHash] || {}; r.height = m.height || 0; r.ts = m.ts || 0; }
         // Newest offer per maker: higher account height wins; on a tie a cancel
         // sentinel (price 0) always wins, so a withdraw is never lost.
