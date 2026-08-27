@@ -3947,7 +3947,13 @@ function tpShowDeposit(coin, needAmt, haveAmt) {
         let have;
         if (isXmr) have = parseFloat(walletBal.xmr || 0);
         else { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); }
-        if (have >= needAmt) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(fd) + " " + unit + " spendable. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
+        // Compare with a one-quantum tolerance: needAmt is a float carrying a
+        // buffer (+0.01 XNO / +0.001 XMR) and rounding error, while the deposit
+        // URI quantizes to micro-units — so a wallet funded to exactly the round
+        // amount can read one ULP below needAmt and wait forever. The buffer
+        // makes accepting within 1e-6 strictly safe (still far above the deal).
+        const EPS = 1e-6;
+        if (have >= needAmt - EPS) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(fd) + " " + unit + " spendable. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
         else if (have > 0) { $("tpDepStatus").textContent = "● " + have.toFixed(fd) + " " + unit + " so far — need " + needAmt.toFixed(dp) + (isXmr ? " (confirming…)" : "") + ". Waiting…"; }
       } catch (e) {}
     }, isXmr ? 6000 : 3000);
@@ -4132,7 +4138,7 @@ function tpSessionsRender() {
   box.classList.toggle("hidden", open.length === 0);
   box.textContent = "";
   if (!open.length) return;
-  const h = document.createElement("div"); h.className = "glab"; h.style.color = "#a11"; h.textContent = "Unfinished swap" + (open.length > 1 ? "s" : "") + " on this device"; box.append(h);
+  const h = document.createElement("div"); h.className = "glab"; h.style.color = "#9a7b00"; h.textContent = "Swap" + (open.length > 1 ? "s" : "") + " to finish or clear on this device"; box.append(h);
   for (const sess of open) {
     const st = tpStore(sess.id);
     const steps = ["lock", "lockseen", "fund", "open", "refund", "claim", "x", "sweep"].filter(k => st.get(k));
@@ -4160,7 +4166,24 @@ function tpSessionsRender() {
         } catch (e) { tpLog("resume stopped: " + (e && e.message || e)); b.disabled = false; }
       };
     } else {
-      b.textContent = "Nothing recoverable on your side yet (no funds moved, or waiting on the counterparty) — keep this data";
+      // Not resumable yet. Two very different situations — say which, plainly,
+      // so nobody reads "unfinished" as "lost".
+      const movedFunds = st.get("lock") || st.get("fund") || st.get("open") || st.get("x");
+      if (!movedFunds) {
+        // Stopped during setup (keygen/ceremony) BEFORE any coins were locked.
+        // Nothing is at stake; let the user clear the entry so it stops nagging.
+        b.textContent = "✓ Safe to clear — this swap stopped during setup, before any coins moved. Your balance is untouched.";
+        b.disabled = true; box.append(b);
+        const d = document.createElement("button"); d.style.width = "100%"; d.style.marginTop = ".3rem";
+        d.style.background = "#fff"; d.style.color = "var(--muted)"; d.style.fontWeight = "700"; d.textContent = "Clear this entry";
+        d.onclick = () => { try { st.set("done", { at: Date.now(), discarded: true }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() }); tpSessionsRender(); } catch (e) {} };
+        box.append(d);
+        continue;
+      }
+      // Funds did move, but our side has nothing to do right now — the
+      // counterparty must act (or a timeout must pass) and then auto-recovery
+      // takes over. This is normal, not a loss.
+      b.textContent = "No action needed right now — waiting on the counterparty. If they don't finish, your side refunds itself automatically after the timeout. Keep this until it clears.";
       b.disabled = true;
     }
     box.append(b);
