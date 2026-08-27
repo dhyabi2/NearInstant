@@ -496,8 +496,14 @@
     // re-discover a block we already know (that was pure wasted work while
     // waiting out the ~10 confirmations).
     let hit = null;
+    // Monotonic tip: with reads rotating across nodes, a node a block or two
+    // behind must never make confirmations go BACKWARDS (or pin them — the tip
+    // only ever ratchets up).
+    let tipMax = 0;
+    const startedAt = Date.now();
     for (;;) {
-      const tip = await node.height();
+      let tip = await node.height();
+      if (tip > tipMax) tipMax = tip; else tip = tipMax;
       if (!hit) {
         const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - (defaultLookback || 120));
         const total = Math.max(1, tip - from0);
@@ -512,7 +518,8 @@
       if (hit && tip - hit.block >= XMR_CONF) { deps.note(`Monero: lock of ${raw2dec(hit.amount, 12)} XMR confirmed ✓ (block ${hit.block.toLocaleString()}, ${tip - hit.block} confirmations)`); return { hit, tip }; }
       if (hit) {
         const conf = Math.max(0, tip - hit.block), mins = Math.max(1, (XMR_CONF - conf) * 2);
-        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${XMR_CONF} confirmations · ~${mins} min left · waiting for confirmations (no re-scan) · checking again in 45 s`);
+        const elapsedM = Math.floor((Date.now() - startedAt) / 60000);
+        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${XMR_CONF} confirmations · ~${mins} min left (Monero consensus requires ${XMR_CONF} blocks — ~20 min on average, block times vary) · ${elapsedM} min elapsed · no re-scan, just waiting`);
       } else {
         round++;
         deps.note(`Monero: no ${want} XMR lock on the joint address yet (chain at ${tip.toLocaleString()}) · the other side may still be sending · re-scanning in 45 s (check ${round})`);

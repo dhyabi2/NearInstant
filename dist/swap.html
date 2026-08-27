@@ -413,7 +413,7 @@
           <!-- lightning bolt: lightning-blue fill with an orange edge -->
           <path d="M35 7 L16 35 H28.5 L26 57 L48 26 H34 Z" fill="#1FA2FF" stroke="#FF6600" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
         </svg>
-        <span>NearInstant<span style="color:#2a56cc">.xyz</span></span>
+        <span>NearInstant<span style="color:#2a56cc">.xyz</span><span style="display:block;font-size:.68rem;font-weight:650;letter-spacing:0;color:var(--muted);margin-top:.1rem">Trustless, non-custodial Nano⇄Monero atomic-swap DEX that runs entirely in your browser</span></span>
       </div>
       <div class="topact">
         <a class="ghlink" href="https://github.com/dhyabi2/NearInstant" target="_blank" rel="noopener noreferrer" aria-label="NearInstant source on GitHub" title="View source on GitHub">
@@ -1813,7 +1813,7 @@ $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b
 let expWasm = null, expBeacon = null;
 // Bump on every deploy so browsers fetch fresh scripts + worker instead of a
 // stale cached copy (workers cache especially aggressively).
-const ASSET_V = "dda55c4384a7";
+const ASSET_V = "bab2356b3625";
 function expScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement("script");
@@ -2235,10 +2235,17 @@ async function swapEnsure() {
 }
 function swapMoneroPost() {
   const nodes = rpcState.monero.map(u => String(u).replace(/\/+$/, "")).filter(Boolean);
+  // ROTATE the starting node per request. A fixed order means a responsive but
+  // LAGGING first node (stale chain height) answers every call "successfully"
+  // and never fails over — pinning confirmation counts for minutes (observed:
+  // 1/10 confs frozen ~7 min). Round-robin spreads reads across nodes so one
+  // stale node cannot pin the tip.
+  let rr = 0;
   return async (route, body) => {
     const j = body.length && (body[0] === 0x7b || body[0] === 0x5b);
     let lastErr = "no Monero node answered";
-    for (const url of nodes) {                     // fail over: a stalled node moves to the next
+    const order = nodes.map((_, i) => nodes[(rr + i) % nodes.length]); rr = (rr + 1) % Math.max(1, nodes.length);
+    for (const url of order) {                     // fail over: a stalled node moves to the next
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
       try {
         const r = await fetch(url + "/" + route, { method: "POST", body, signal: ctrl.signal, headers: { "content-type": j ? "application/json" : "application/octet-stream" } });
