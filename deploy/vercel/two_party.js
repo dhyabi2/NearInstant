@@ -493,7 +493,7 @@
     let round = 0;
     for (;;) {
       const tip = await node.height();
-      const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - 720);
+      const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - 120);
       const total = Math.max(1, tip - from0);
       let hit = null;
       for (let from = from0; from <= tip - 1 && !hit; from += 10) {
@@ -810,7 +810,14 @@
     if (!S.get("lockseen")) {
       deps.note("waiting for the counterparty to lock their XMR…");
       const deadline = Date.now() + (deps.lockWaitMs || 90 * 60 * 1000);
-      const res = await waitJointXmrLock(deps, party, deal.xmrAtomic, 0, deadline);
+      // Record a recent Monero height ONCE, so the lock scan starts near the tip
+      // instead of re-scanning ~720 blocks every round (the counterparty locks
+      // its XMR only after our XNO is on-chain, so the lock cannot predate this).
+      if (S.get("lockScanFrom") == null) {
+        try { const nd = await deps.xmr.XmrNode.connect(deps.moneroPost); S.set("lockScanFrom", Math.max(1, (await nd.height()) - 60)); } catch (e) {}
+      }
+      const since = S.get("lockScanFrom") || 0;
+      const res = await waitJointXmrLock(deps, party, deal.xmrAtomic, since, deadline);
       if (!res) {
         // They never locked. Take the refund: it returns the XNO and, because
         // it is an adaptor signature, publishes our Monero share — harmless
