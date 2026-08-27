@@ -608,8 +608,18 @@
         for (let from = from0; from <= tip - 1 && !hit; from += 10) {
           const to = Math.min(from + 9, tip - 1);
           const pct = Math.min(100, Math.round((to - from0) / total * 100));
-          deps.note(`Monero: ${pbar(pct / 100)} scanning blocks ${from.toLocaleString()}–${to.toLocaleString()} for the ${want} XMR lock (chain at ${tip.toLocaleString()}) · ${pct}%`);
-          const outs = JSON.parse(await node.scan_all(spendPub, viewKey, from, to, null));
+          deps.note(`Monero: ${pbar(pct / 100)} scanning blocks ${from.toLocaleString()}–${to.toLocaleString()} for the ${want} XMR lock (chain at ${tip.toLocaleString()})`);
+          // A single flaky chunk must not kill the whole wait/recovery: retry
+          // the chunk a few times, then skip it — the next pass re-covers it.
+          let outs = null;
+          for (let att = 0; att < 3 && outs === null; att++) {
+            try { outs = JSON.parse(await node.scan_all(spendPub, viewKey, from, to, null)); }
+            catch (e) {
+              deps.note("Monero: node hiccup on blocks " + from.toLocaleString() + "\u2013" + to.toLocaleString() + " (" + String(e && e.message || e).slice(0, 70) + ") \u2014 retrying\u2026");
+              await new Promise((r) => setTimeout(r, 4000));
+            }
+          }
+          if (outs === null) { deps.note("Monero: skipping that chunk after 3 failures \u2014 re-covered on the next pass"); continue; }
           for (const o of outs) if (BigInt(o.amount) >= BigInt(minAtomic)) { hit = o; break; }
         }
       }
