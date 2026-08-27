@@ -583,7 +583,13 @@ CMDS.tick = async (args) => {
                           note: WATCH_MODE ? bgNote : ((m) => act("resume: " + m)), store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2,
                           recoverWaitMs: 60 * 1000, fundWaitMs: FUND_WAIT_MS, confTarget: (o.instant && o.instant.confs) || undefined,
                           claimWaitMs: Math.max(60 * 1000, 60 * 60 * 1000 - (Date.now() - ((o.presigned && o.presigned.at) || Date.now()))) };
-          const runResume = () => (roleIsA ? TP.runA : TP.runB)(rdeps, TP.restore(wasm, o.party, null));
+          const runResume = () => {
+            const rp = TP.restore(wasm, o.party, null);
+            // Resume-over-refund: re-join the co-signing rounds and COMPLETE the
+            // swap after a restart, instead of waiting for the peer to unwind.
+            try { const shr = o.shared; if (shr && shr.hex && TP.attachResume) TP.attachResume(MB, rp, { shared: shr.hex, init: !!shr.init, relay: relayFor(seed), store }); } catch (e) {}
+            return (roleIsA ? TP.runA : TP.runB)(rdeps, rp);
+          };
           if (WATCH_MODE) {
             __resuming = { sid, at: Date.now() };
             runResume()
@@ -810,6 +816,7 @@ async function settleTake(seed, offer, take, note) {
   store.set("party", party.snapshot());
   store.set("acceptCert", take.cert);
   if (take.instant && take.instant.confs) store.set("instant", take.instant);   // persist the tier: a resumed session must honour it
+  if (take.shared) store.set("shared", { hex: take.shared, init: false });      // resume-over-refund: rebuild step channels after a restart
   const priceFn = async () => { const pr = await marketPrice(); return pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() } : { ok: false, reason: pr.reason }; };
   const deps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi, moneroPost: walletApi.moneroPost(),
                  note, store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2, fundWaitMs: FUND_WAIT_MS,

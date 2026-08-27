@@ -318,6 +318,16 @@ offers. At a 30–60 bps spread a *filled* small swap earns only cents.
 If asked about revenue, say the bottleneck is demand, not autonomy. If asked
 about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 
+## Resume-over-refund (automatic)
+
+A settlement now SURVIVES restarts and disconnects: the handshake secret is
+persisted with the session, and a resumed side re-derives fresh, step-scoped
+encrypted channels (new keys per step+attempt — no nonce reuse) to re-join the
+claim co-signing round. If both sides come back — your agent restarts, the
+taker reloads their page — the swap COMPLETES instead of unwinding to a
+refund. If the peer never returns, the old safety path is unchanged: refund /
+recover, nothing stranded. No configuration; it just works after `git pull`.
+
 ## Instant tier — maker-priced early release (side 0, opt-in)
 
 By default the XNO you fund is only claimable after the taker's XMR lock has

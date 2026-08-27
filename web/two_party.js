@@ -232,6 +232,57 @@
     return new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
   }
 
+  // ---------- resume-over-refund: step-scoped wire re-establishment ----------
+  // A live MailboxWire cannot be safely REUSED after a crash: FROST commits are
+  // random, so re-sending a step at the same (key, seq) would reuse an AES-GCM
+  // nonce with different plaintext. Instead, each protocol step + attempt gets a
+  // COMPLETELY FRESH channel derived from the persisted handshake secret:
+  //   stepShared = SHA-256("xnoxmr-resume-v1:" + step + ":" + attempt + ":" + shared)
+  // Distinct key + distinct mailboxes per attempt → no nonce reuse ever. Each
+  // side sends on ITS attempt counter and receives by scanning the peer's
+  // attempts in a ±2 window (counters drift when only one side crashed), locking
+  // to the first channel that answers.
+  async function stepSalt(sharedBytes, step, attempt) {
+    const te = new TextEncoder();
+    const tag = te.encode("xnoxmr-resume-v1:" + step + ":" + attempt + ":");
+    const buf = new Uint8Array(tag.length + sharedBytes.length);
+    buf.set(tag, 0); buf.set(sharedBytes, tag.length);
+    return new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
+  }
+  async function stepWire(party, step) {
+    const R = party._resume;
+    if (!R) throw new Error("no live wire and no resume material for step " + step);
+    const S = R.store, key = "rsAtt:" + step;
+    const my = ((S && S.get(key)) || 0) + 1;
+    if (S) S.set(key, my);                       // persist BEFORE use: a crash never reuses an attempt
+    const sharedB = hb(R.sharedHex);
+    const mk = async (att) => { const d = await R.M.derive(await stepSalt(sharedB, step, att), R.init); return new R.M.MailboxWire([R.relay], d.send, d.recv, d.key); };
+    const sendW = await mk(my); sendW.pollMs = 2000; sendW.timeoutMs = 240000;
+    const cands = [];
+    for (let a = Math.max(1, my - 2); a <= my + 2; a++) { const w = await mk(a); w.pollMs = 1500; w.timeoutMs = 6000; cands.push(w); }
+    let lockedW = null;
+    return {
+      send: (pt) => sendW.send(pt),
+      async recv() {
+        if (lockedW) return lockedW.recv();
+        const until = Date.now() + 240000;
+        while (Date.now() < until) {
+          for (const w of cands) {
+            try { const pt = await w.recv(); lockedW = w; lockedW.timeoutMs = 240000; return pt; }
+            catch (e) { /* nothing on this attempt-channel yet */ }
+          }
+        }
+        throw new Error("recv timeout — the counterparty is not on any resume channel for step " + step);
+      },
+    };
+  }
+  // Give a RESTORED party the material to rebuild wires: the persisted handshake
+  // secret, its initiator flag, a relay, and the session store (attempt counters).
+  function attachResume(M, party, opts) {
+    party._resume = { M, sharedHex: String(opts.shared), init: !!opts.init, relay: opts.relay, store: opts.store || null };
+    return party;
+  }
+
   // Taker: post a take-request for the offer; wait for the maker's reply; return
   // the private duplex wire (taker = initiator). relay: post/fetch (LedgerRelay).
   // The rendezvous box is PUBLIC and unauthenticated, and both sides used to
@@ -469,8 +520,9 @@
   }
 
   // ---------- role signing over the wire (one signer per browser) ----------
-  async function jointSignRole(party, msg32) {
-    const s = party._signer, w = party._wire;
+  async function jointSignRole(party, msg32, step) {
+    const s = party._signer, w = party._wire || (step && party._resume ? await stepWire(party, step) : null);
+    if (!w) throw new Error("no wire for the co-signing round");
     await w.send(s.sign_commit(msg32));
     s.set_peer_commit(await w.recv());
     await w.send(s.sign_share());
@@ -478,8 +530,9 @@
     return s.aggregate_sig();
   }
   // `point` defaults to T (B's share, for the CLAIM). The refund passes TA.
-  async function adaptorPresignRole(party, msg32, point) {
-    const s = party._signer, w = party._wire;
+  async function adaptorPresignRole(party, msg32, point, step) {
+    const s = party._signer, w = party._wire || (step && party._resume ? await stepWire(party, step) : null);
+    if (!w) throw new Error("no wire for the pre-signing round");
     const adaptor = point || party.T;
     if (!adaptor) throw new Error("no adaptor point for this presignature");
     await w.send(s.presign_commit(msg32, adaptor));
@@ -577,7 +630,7 @@
     const acctHex = party.jointNanoAccount;
     const openHash = deps.wasm.state_block_hash(acctHex, "0".repeat(64), acctHex, amt, sendHash.toLowerCase(), "open");
     deps.note("co-signing the joint open with the counterparty…");
-    const sig = await jointSignRole(party, openHash);
+    const sig = await jointSignRole(party, openHash, "open");
     if (!deps.wasm.nano_check(party._account, openHash, sig)) throw new Error("joint open signature invalid");
     const built = buildBlock(deps.wasm, { acctHex, previous: "0".repeat(64), balance: amt, link: sendHash.toLowerCase(), subtype: "open", sig });
     const work = await I.generateWork(deps.urls, built.workRoot, deps.beacon.THRESH.receive, null);
@@ -591,7 +644,7 @@
     const acctHex = party.jointNanoAccount;
     const refundHash = deps.wasm.state_block_hash(acctHex, openHash, acctHex, "0", refundDestHex, "send");
     deps.note("refund-first: co-signing the unilateral refund (held, not broadcast)…");
-    const sig = await jointSignRole(party, refundHash);
+    const sig = await jointSignRole(party, refundHash, "refund");
     if (!deps.wasm.nano_check(party._account, refundHash, sig)) throw new Error("refund signature invalid");
     return { prev: openHash, dest: refundDestHex, sig: hx(sig) };
   }
@@ -677,7 +730,7 @@
     const amt = String(typeof amount === "object" ? amount.amount : amount);
     const openHash = deps.wasm.state_block_hash(acctHex, "0".repeat(64), acctHex, amt, sendHash.toLowerCase(), "open");
     deps.note("co-signing the joint open…");
-    const sig = await jointSignRole(party, openHash);
+    const sig = await jointSignRole(party, openHash, "open");
     if (!deps.wasm.nano_check(party._account, openHash, sig)) throw new Error("joint open signature invalid");
     // Normalize to lowercase so BOTH parties key everything (claim previous,
     // frontier compare) off the identical string — the node returns uppercase.
@@ -792,6 +845,22 @@
       if (mv) {
         if (await onMoved(mv) === "recovered") return { done: true, recovered: true };
         // else: our claim landed — fall through to the realized bookkeeping
+      } else if (!party._wire && party._resume) {
+        // RESUME-OVER-REFUND: we have the persisted handshake secret, so we can
+        // re-establish a fresh step channel and CO-SIGN THE CLAIM — completing
+        // the swap — instead of waiting for the counterparty to unwind it. If
+        // the peer never shows on the resume channel, fall back to the old
+        // watch-for-their-refund behaviour (armed here, used by the claim step).
+        deps.note("re-establishing the encrypted wire from saved material — trying to COMPLETE the swap (co-sign the claim) before considering any unwind…");
+        party.__resumeFallback = async () => {
+          const until = Date.now() + (deps.recoverWaitMs || 15 * 60 * 1000);
+          while (Date.now() < until) {
+            await new Promise((r) => setTimeout(r, 10000));
+            const m2 = await checkMoved();
+            if (m2) return onMoved(m2);
+          }
+          return null;
+        };
       } else if (!party._wire) {
         // Resumed without the counterparty: a claim needs their co-signature,
         // so the only productive move is waiting for their (automatic) refund
@@ -842,16 +911,28 @@
       if (!party.myWalletAcct) throw new Error("no wallet account to claim the XNO to");
       const dest = party.myWalletAcct;                          // B claims the XNO to itself
       const claimHash = deps.wasm.state_block_hash(acctHex, open.hash, acctHex, "0", dest, "send");
-      const pre = await adaptorPresignRole(party, claimHash);
-      const claimSig = deps.wasm.presig_complete(pre, party.myXmrShare);   // B has x = its own share
-      if (!deps.wasm.nano_check(party._account, claimHash, claimSig)) throw new Error("completed claim invalid");
-      const built = buildBlock(deps.wasm, { acctHex, previous: open.hash, balance: "0", link: dest, subtype: "send", sig: claimSig });
-      const I = deps.beacon._internals;
-      const work = await I.generateWork(deps.urls, built.workRoot, deps.beacon.THRESH.send, null);
-      deps.note("broadcasting the claim (reveals x)…");
-      const hash = await I.processBlock(deps.urls, built.signedJson, work);
-      S.set("claim", { hash: String(hash) });
-      try { await pocketIncoming(deps); } catch (e) {}   // pocket the received XNO
+      let claimSig = null;
+      try {
+        const pre = await adaptorPresignRole(party, claimHash, undefined, "claim");
+        claimSig = deps.wasm.presig_complete(pre, party.myXmrShare);   // B has x = its own share
+        if (!deps.wasm.nano_check(party._account, claimHash, claimSig)) throw new Error("completed claim invalid");
+      } catch (e) {
+        if (party.__resumeFallback) {
+          deps.note("could not co-sign the claim (" + (e && e.message || e) + ") — the peer seems offline; watching for their refund instead…");
+          const r = await party.__resumeFallback();
+          if (r === "recovered") return { done: true, recovered: true };
+          if (r !== "claimed") throw new Error("peer offline: the claim could not be co-signed and no refund has appeared yet — retry later (your locked XMR stays recoverable)");
+        } else throw e;
+      }
+      if (claimSig) {
+        const built = buildBlock(deps.wasm, { acctHex, previous: open.hash, balance: "0", link: dest, subtype: "send", sig: claimSig });
+        const I = deps.beacon._internals;
+        const work = await I.generateWork(deps.urls, built.workRoot, deps.beacon.THRESH.send, null);
+        deps.note("broadcasting the claim (reveals x)…");
+        const hash = await I.processBlock(deps.urls, built.signedJson, work);
+        S.set("claim", { hash: String(hash) });
+        try { await pocketIncoming(deps); } catch (e) {}   // pocket the received XNO
+      }
     }
     // What actually happened, from the chain, not from the deal terms: the XNO
     // that landed in the joint account is `open.balance` (on-chain), and B paid
@@ -929,7 +1010,7 @@
       // the single joint-account successor is safe either way: if their claim
       // somehow lands first, our refund is rejected and a resume extracts x.)
       let pre0;
-      try { pre0 = await adaptorPresignRole(party, claimHash); }
+      try { pre0 = await adaptorPresignRole(party, claimHash, undefined, "claim"); }
       catch (e) {
         deps.note("could not co-sign the claim with the counterparty (" + (e && e.message || e) + ") — taking your refund so your XNO comes back…");
         const r = await broadcastRefund(deps, party, open.hash, S.get("refund"));
@@ -942,7 +1023,7 @@
     let preHex = (S.get("presigned") || {}).pre;
     if (!preHex) {  // session saved before presig persistence: needs the wire once
       if (!party._wire) throw new Error("this saved swap predates presig persistence — resume with the counterparty online, or wait for their refund");
-      preHex = hx(await adaptorPresignRole(party, claimHash));
+      preHex = hx(await adaptorPresignRole(party, claimHash, undefined, "claim"));
       S.set("presigned", { at: Date.now(), pre: preHex });
     }
     const pre = hb(preHex);
@@ -1030,7 +1111,7 @@
     const refundHash = deps.wasm.state_block_hash(acctHex, openHash, acctHex, "0", dest, "send");
     if (!party.TA) throw new Error("refund needs the adaptor point TA — re-run the ceremony");
     deps.note("co-signing the refund as an adaptor pre-signature (recoverable by both sides)…");
-    const pre = await adaptorPresignRole(party, refundHash, party.TA);
+    const pre = await adaptorPresignRole(party, refundHash, party.TA, "refund");
     // Both sides verify the pre-signature before anything irreversible happens.
     if (!deps.wasm.presig_verify(pre, party._account, refundHash)) {
       throw new Error("refund pre-signature invalid — aborting before locking funds");
@@ -1125,6 +1206,7 @@
     waitJointXmrLock, coSignOpen, coSignRefund, coSignRefundRole, buildBlock,
     coOpen, confirmedQuorum, runA, runB, raw2dec,
     broadcastRefund, refundNow, recoverXmrFromRefund, frontierSigIfMoved,
+    attachResume, _stepWire: stepWire,
     partyProfit, makerProfit, certify, gate, minViableXnoRaw,
     XMR_TX_FEE_ATOMIC_DEFAULT: XMR_TX_FEE_ATOMIC_DEFAULT.toString(),
     _hx: hx, _hb: hb,
