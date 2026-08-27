@@ -3819,34 +3819,43 @@ function tpDrawQr(canvas, text) {
 }
 let tpDepTimer = null;
 function tpHideDeposit() { if (tpDepTimer) { clearInterval(tpDepTimer); tpDepTimer = null; } const el = $("tpDeposit"); if (el) el.style.display = "none"; }
-function tpShowDeposit(needXno, haveXno) {
-  return new Promise((resolve) => {
+let tpXmrAddrCache = null;
+async function tpXmrAddr() { if (!tpXmrAddrCache) { try { tpXmrAddrCache = await walletApi.xmrAddress(); } catch (e) {} } return tpXmrAddrCache; }
+// Guided deposit for EITHER coin. coin "xno": Nano address, nano:…?amount=<raw>,
+// balance polled via the RPC (websocket auto-pockets). coin "xmr": Monero
+// address, monero:…?tx_amount=<xmr>, spendable polled via the background scan
+// (slower — Monero needs ~10 confirmations before it is spendable).
+function tpShowDeposit(coin, needAmt, haveAmt) {
+  return new Promise(async (resolve) => {
     const el = $("tpDeposit"); if (!el || !tpWalletOpen()) { resolve(false); return; }
-    const addr = walletApi.address();
-    const short = Math.max(needXno - (haveXno || 0), 0.000001);
-    // nano:<address>?amount=<raw> — Natrium et al. extract the address via
-    // findAccountInString and read amount from uri.queryParameters, so the QR
-    // pre-fills BOTH. (Earlier "invalid address" was a broken encoder, since
-    // replaced by qrcodegen, not this URI form.)
-    const raw = (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString();
-    const uri = "nano:" + addr + "?amount=" + raw;
-    $("tpDepTitle").textContent = "Deposit XNO to fund your swap";
-    $("tpDepMsg").textContent = "This swap needs about " + needXno.toFixed(3) + " XNO. Send at least " + short.toFixed(3) + " XNO to the address below (or scan the code) — it's detected automatically, no refresh needed.";
+    const isXmr = coin === "xmr", unit = isXmr ? "XMR" : "XNO", dp = isXmr ? 6 : 3, fd = isXmr ? 6 : 4;
+    const addr = isXmr ? await tpXmrAddr() : walletApi.address();
+    if (!addr) { resolve(false); return; }
+    const short = Math.max(needAmt - (haveAmt || 0), isXmr ? 0.0001 : 0.000001);
+    const uri = isXmr
+      ? ("monero:" + addr + "?tx_amount=" + (+short.toFixed(12)))          // Monero URI: tx_amount in XMR
+      : ("nano:" + addr + "?amount=" + (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString());  // Nano URI: amount in raw
+    $("tpDepTitle").textContent = "Deposit " + unit + " to fund your swap";
+    $("tpDepMsg").textContent = "This swap needs about " + needAmt.toFixed(dp) + " " + unit + ". Send at least " + short.toFixed(dp) + " " + unit + " to the address below (or scan the code) — detected automatically."
+      + (isXmr ? " Monero needs ~10 confirmations (~20 min) to become spendable." : "");
     if ($("tpDepQr")) { const drew = tpDrawQr($("tpDepQr"), uri); $("tpDepQr").style.display = drew ? "block" : "none"; }
     $("tpDepAddr").textContent = addr;
     $("tpDepStatus").textContent = "● Waiting for your deposit…";
     el.style.display = ""; try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
     $("tpDepCopy").onclick = () => { try { navigator.clipboard.writeText(addr).then(() => { $("tpDepCopy").textContent = "Copied ✓"; setTimeout(() => { $("tpDepCopy").textContent = "Copy address"; }, 1500); }); } catch (e) {} };
+    if (isXmr) { try { xmrAutoStart(); } catch (e) {} }   // make sure the Monero scan is running to detect it
     let done = false;
     $("tpDepCancel").onclick = () => { if (done) return; done = true; tpHideDeposit(); resolve(false); };
     tpDepTimer = setInterval(async () => {
       if (done) return;
       try {
-        const b = await walletApi.balance(); const have = parseFloat((b && b.xno) || "0");
-        if (have >= needXno) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(4) + " XNO in wallet. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
-        else if (have > 0) { $("tpDepStatus").textContent = "● Received " + have.toFixed(4) + " XNO so far — need " + needXno.toFixed(3) + ". Waiting…"; }
+        let have;
+        if (isXmr) have = parseFloat(walletBal.xmr || 0);
+        else { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); }
+        if (have >= needAmt) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(fd) + " " + unit + " spendable. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
+        else if (have > 0) { $("tpDepStatus").textContent = "● " + have.toFixed(fd) + " " + unit + " so far — need " + needAmt.toFixed(dp) + (isXmr ? " (confirming…)" : "") + ". Waiting…"; }
       } catch (e) {}
-    }, 3000);
+    }, isXmr ? 6000 : 3000);
   });
 }
 function tpBtnSync() {
@@ -3902,16 +3911,30 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     return;
   }
   const deal = tpPending; const extDest = deal.dest; tpResetReview();
-  // Fund check (selling XNO): the wallet must hold enough XNO to post the
-  // take-request AND fund the joint. If short, guide a live-detected deposit
-  // before anything is posted — no more cryptic "identity balance too low".
+  // Fund check — guide a live-detected deposit BEFORE anything is posted, for
+  // whichever coin the taker sells (and, for an XMR seller, the small XNO the
+  // take-request posting needs). No more cryptic "identity balance too low".
+  const readXno = async () => { try { const b = await walletApi.balance(); return parseFloat((b && b.xno) || "0"); } catch (e) { return 0; } };
   if (swSide === "xno") {
+    // sell XNO → need XNO to post the take-request AND fund the joint
     const needXno = Number(BigInt(deal.xnoRaw) / (10n ** 24n)) / 1e6 + 0.01;
-    let have = 0; try { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); } catch (e) {}
+    const have = await readXno();
     if (have < needXno) {
       tpLog("Your wallet needs about " + needXno.toFixed(3) + " XNO — send XNO to fund the swap (auto-detected).");
-      const funded = await tpShowDeposit(needXno, have);
-      if (!funded) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+      if (!await tpShowDeposit("xno", needXno, have)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+    }
+  } else {
+    // sell XMR → need a little XNO to post the request, and enough XMR to fund
+    const dustXno = 0.01, haveXno = await readXno();
+    if (haveXno < dustXno) {
+      tpLog("Selling XMR also needs a little XNO to post the request — send ~" + dustXno + " XNO (auto-detected).");
+      if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+    }
+    const needXmr = Number(deal.xmrAtomic) / 1e12 + 0.001;   // pay XMR + Monero fee buffer
+    const haveXmr = parseFloat(walletBal.xmr || 0);
+    if (haveXmr < needXmr) {
+      tpLog("Your wallet needs about " + needXmr.toFixed(6) + " XMR — send XMR to fund the swap (auto-detected; Monero takes ~20 min to confirm).");
+      if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
     }
   }
   try {
