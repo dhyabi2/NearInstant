@@ -318,7 +318,7 @@
     while (!resp && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 4000));
       resp = await relay.fetch(rvRespBox(offer.blockHash), slot);
-      if (!resp && onProgress) onProgress("still waiting for the maker to accept… " + Math.round((Date.now() - start) / 1000) + "s (a maker must be running its accept loop — Smart Offer, or an agent with autosettle on)");
+      if (!resp && onProgress) { const fr=(Date.now()-start)/(10*60*1000); onProgress(pbar(fr) + " waiting for the maker to accept\u2026 " + Math.round((Date.now()-start)/1000) + "s \u00b7 gives up in ~" + Math.max(0, Math.ceil((10*60*1000-(Date.now()-start))/60000)) + " min (a maker must be running its accept loop)"); }
     }
     if (!resp) throw new Error("no maker accepted within 10 min — nobody was online accepting this offer. Your funds were NOT locked and there is nothing to refund: the swap stops before any coins move, so your balance is untouched (only a tiny posting fee left your beacon identity). Both sides must be live at once — take an offer whose maker is running, or run the maker (Smart Offer) yourself.");
     const rj = bytesJson(resp);
@@ -569,6 +569,9 @@
   // proven self-swap driver). Broadcast-bearing steps run through walletApi /
   // beacon exactly like the self-swap.
   const XMR_CONF = 10;
+  // Terminal-style progress bar for every bounded wait, so the user always sees
+  // HOW FAR ALONG a wait is, not just that it exists.
+  const pbar = (f) => { f = Math.max(0, Math.min(1, f)); const n = Math.round(f * 10); return "[" + "\u2593".repeat(n) + "\u2591".repeat(10 - n) + "] " + Math.round(f * 100) + "%"; };
 
   // Every phase of the Monero wait is narrated: which blocks are being scanned
   // (with %), when the lock is found, how many confirmations it has and the
@@ -605,7 +608,7 @@
         for (let from = from0; from <= tip - 1 && !hit; from += 10) {
           const to = Math.min(from + 9, tip - 1);
           const pct = Math.min(100, Math.round((to - from0) / total * 100));
-          deps.note(`Monero: scanning blocks ${from.toLocaleString()}–${to.toLocaleString()} for the ${want} XMR lock (chain at ${tip.toLocaleString()}) · ${pct}%`);
+          deps.note(`Monero: ${pbar(pct / 100)} scanning blocks ${from.toLocaleString()}–${to.toLocaleString()} for the ${want} XMR lock (chain at ${tip.toLocaleString()}) · ${pct}%`);
           const outs = JSON.parse(await node.scan_all(spendPub, viewKey, from, to, null));
           for (const o of outs) if (BigInt(o.amount) >= BigInt(minAtomic)) { hit = o; break; }
         }
@@ -614,7 +617,7 @@
       if (hit) {
         const conf = Math.max(0, tip - hit.block), mins = Math.max(1, (CONF - conf) * 2);
         const elapsedM = Math.floor((Date.now() - startedAt) / 60000);
-        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${CONF} confirmations · ~${mins} min left` + (CONF < XMR_CONF ? ` (⚡ instant tier: the maker accepts the lock at ${CONF} blocks and carries the early-release risk)` : ` (Monero consensus requires ${CONF} blocks — ~20 min on average, block times vary)`) + ` · ${elapsedM} min elapsed · no re-scan, just waiting`);
+        deps.note(`Monero: ${pbar(conf / CONF)} lock found at block ${hit.block.toLocaleString()} · ${conf}/${CONF} confirmations · ~${mins} min left` + (CONF < XMR_CONF ? ` (⚡ instant tier: the maker accepts the lock at ${CONF} blocks and carries the early-release risk)` : ` (Monero consensus requires ${CONF} blocks — ~20 min on average, block times vary)`) + ` · ${elapsedM} min elapsed · no re-scan, just waiting`);
       } else {
         round++;
         deps.note(`Monero: no ${want} XMR lock on the joint address yet (chain at ${tip.toLocaleString()}) · the other side may still be sending · re-scanning in 45 s (check ${round})`);
@@ -896,7 +899,7 @@
           if (Date.now() - lastNote >= 60000) {
             lastNote = Date.now();
             const m = Math.round((Date.now() - t0) / 60000), left = Math.max(0, Math.round((until - Date.now()) / 60000));
-            deps.note("still waiting for the counterparty's refund… " + m + " min (checks every 10 s; gives up in ~" + left + " min — safe to close this page and retry any time, your locked XMR stays recoverable indefinitely)");
+            deps.note(pbar((Date.now() - t0) / Math.max(1, until - t0)) + " still waiting for the counterparty's refund… " + m + " min (checks every 10 s; gives up in ~" + left + " min — safe to close this page and retry any time, your locked XMR stays recoverable indefinitely)");
           }
         }
         if (!S.get("claim")) throw new Error("the counterparty has not refunded yet, so there is nothing to reclaim from on-chain right now. Your XMR is NOT lost — it stays locked and recoverable indefinitely. Their side refunds automatically when it comes online (or after its timeout); just tap Recover again later, or leave the page open and auto-recovery will retry.");
@@ -937,7 +940,8 @@
       const claimHash = deps.wasm.state_block_hash(acctHex, open.hash, acctHex, "0", dest, "send");
       let claimSig = null;
       deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~4 min before falling back…");
-      const nag1 = setInterval(() => { try { deps.note("claim co-sign: still waiting for the counterparty on the wire…"); } catch (e) {} }, 45000);
+      const cs1 = Date.now();
+      const nag1 = setInterval(() => { try { deps.note("claim co-sign: " + pbar((Date.now()-cs1)/240000) + " still waiting for the counterparty on the wire (falls back at 100%)"); } catch (e) {} }, 45000);
       try {
         const pre = await adaptorPresignRole(party, claimHash, undefined, "claim");
         claimSig = deps.wasm.presig_complete(pre, party.myXmrShare);   // B has x = its own share
@@ -1039,7 +1043,8 @@
       // somehow lands first, our refund is rejected and a resume extracts x.)
       let pre0;
       deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~4 min, then your refund runs automatically…");
-      const nagA = setInterval(() => { try { deps.note("claim co-sign: still waiting for the counterparty on the wire…"); } catch (e) {} }, 45000);
+      const csA = Date.now();
+      const nagA = setInterval(() => { try { deps.note("claim co-sign: " + pbar((Date.now()-csA)/240000) + " still waiting for the counterparty on the wire (your refund runs automatically at 100%)"); } catch (e) {} }, 45000);
       try { pre0 = await adaptorPresignRole(party, claimHash, undefined, "claim"); }
       catch (e) {
         deps.note("could not co-sign the claim with the counterparty (" + (e && e.message || e) + ") — taking your refund so your XNO comes back…");
