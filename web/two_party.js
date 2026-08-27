@@ -485,7 +485,7 @@
   // time left — Monero is the slow side and a silent minute reads as a hang.
   // `deadlineMs` (optional): give up and return null instead of waiting forever,
   // so the XNO funder can fall back to the refund if the lock never appears.
-  async function waitJointXmrLock(deps, party, minAtomic, sinceHeight, deadlineMs) {
+  async function waitJointXmrLock(deps, party, minAtomic, sinceHeight, deadlineMs, defaultLookback) {
     deps.note("Monero: connecting to a node…");
     const node = await deps.xmr.XmrNode.connect(deps.moneroPost);
     const spendPub = hb(party.jointMonero.spend_pub), viewKey = hb(party.jointMonero.view_key);
@@ -493,7 +493,7 @@
     let round = 0;
     for (;;) {
       const tip = await node.height();
-      const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - 120);
+      const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - (defaultLookback || 120));
       const total = Math.max(1, tip - from0);
       let hit = null;
       for (let from = from0; from <= tip - 1 && !hit; from += 10) {
@@ -1009,7 +1009,17 @@
     const aShare = deps.wasm.presig_extract(hb(refund.presig), hb(refundSigHex));
     // Order-independent: (my share, their share) yields the same joint secret.
     const jointSecret = deps.xmr.xmr_joint_secret(party.ctx, party.myXmrShare, aShare);
-    const { hit } = await waitJointXmrLock(deps, party, party.deal.xmrAtomic, 0);
+    // RECOVERY, not a trade (filed 912d2a652962):
+    //  - Scan from the KNOWN lock height. Our lock can be HOURS old by the time
+    //    the counterparty refunds; the live-scan default window (tip-120) would
+    //    miss it, giving "Cannot destructure 'hit' of null". lock.h is persisted
+    //    (runB records it when it broadcasts the lock). Fall back to a wide
+    //    window only if it is somehow absent.
+    //  - NEVER gate on profitability: we are sweeping OUR OWN coins back, so
+    //    market movement is irrelevant. price:null disables the wait's gate.
+    const lockH = (deps.store && (deps.store.get("lock") || {}).h) || 0;
+    const rdeps = Object.assign({}, deps, { price: null });
+    const { hit } = await waitJointXmrLock(rdeps, party, party.deal.xmrAtomic, lockH, undefined, 5000);
     const node = await deps.xmr.XmrNode.connect(deps.moneroPost);
     const myXmr = await deps.walletApi.xmrAddress();
     deps.note("recovering your locked XMR (the other side refunded and revealed their share)…");
