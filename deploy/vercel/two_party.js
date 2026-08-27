@@ -213,6 +213,19 @@
     return new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: theirKey }, myKp.privateKey, 256));
   }
 
+  // The 32-byte message the maker signs to AUTHENTICATE its handshake reply:
+  // SHA-256("xnoxmr-rv-auth-v1:" || offerHash || makerEphemeralPub). Binding the
+  // signature to BOTH the offer hash and the fresh ECDH pub means a signature is
+  // useless on any other offer or with any other key, so a slot-squatting MITM
+  // cannot substitute its own ECDH pub: it can't sign as the offer's account.
+  async function authMsg(offerHash, pubBytes) {
+    const ctx = new TextEncoder().encode("xnoxmr-rv-auth-v1:");
+    const oh = hb(String(offerHash).toLowerCase());
+    const buf = new Uint8Array(ctx.length + oh.length + pubBytes.length);
+    buf.set(ctx, 0); buf.set(oh, ctx.length); buf.set(pubBytes, ctx.length + oh.length);
+    return new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
+  }
+
   // Taker: post a take-request for the offer; wait for the maker's reply; return
   // the private duplex wire (taker = initiator). relay: post/fetch (LedgerRelay).
   // The rendezvous box is PUBLIC and unauthenticated, and both sides used to
@@ -224,7 +237,7 @@
   // cannot hide an honest take-request behind it.
   const RV_SLOTS = 8;
 
-  async function takerHandshake(M, relay, offer, deal, onProgress) {
+  async function takerHandshake(M, relay, offer, deal, onProgress, authVerify) {
     const { kp, pub } = await ecdhMake();
     if (onProgress) onProgress("posting take-request to the offer's rendezvous…");
     // Take the first free slot; a racing taker just loses the maker's pick.
@@ -250,6 +263,18 @@
     // a retry, never move funds.
     if (rj.decline) { const e = new Error("maker declined: " + String(rj.decline).slice(0, 200)); e.declined = true; throw e; }
     if (!rj.pub) throw new Error("maker reply was malformed");
+    // AUTHENTICATE the reply against the account that posted the offer. Without
+    // this, a party that squats the response slot could hand the taker ITS OWN
+    // ECDH pub and man-in-the-middle the whole ceremony. The maker signs
+    // (offerHash || its pub) with the offer's account key; we verify against
+    // offer.maker. Atomicity already keeps funds safe, but this closes the
+    // last "am I really talking to the maker I picked?" gap. authVerify is
+    // omitted only by the protocol regression tests (no on-chain identity).
+    if (authVerify) {
+      let good = false;
+      try { good = rj.sig ? await authVerify(await authMsg(offer.blockHash, hb(rj.pub)), hb(rj.sig)) : false; } catch (e) { good = false; }
+      if (!good) throw new Error("maker identity could not be verified (the accept was not signed by the account that posted this offer — possible interference). Your funds were NOT locked; nothing moved. Try the offer again.");
+    }
     const shared = await ecdhShared(kp, hb(rj.pub));
     const d = await M.derive(shared, true);
     // `shared` is returned so a headless session can PERSIST it and rebuild the
@@ -267,7 +292,7 @@
   // market is declined before we reply - the posted price may be minutes old.
   // A decline is reported as {declined: reason} so the caller reprices instead
   // of treating it as junk.
-  async function makerPollTake(M, relay, offerHash, myIntent, maxXnoRaw, certifyFn) {
+  async function makerPollTake(M, relay, offerHash, myIntent, maxXnoRaw, certifyFn, authSign) {
     let sawJunk = false, declined = null;
     for (let slot = 0; slot < RV_SLOTS; slot++) {
       const req = await relay.fetch(rvBox(offerHash), slot);
@@ -291,7 +316,13 @@
         rj.cert = cert;
       }
       const { kp, pub } = await ecdhMake();
-      await relay.post(rvRespBox(offerHash), slot, jsonBytes({ v: 1, pub: hx(pub) }));
+      // Sign (offerHash || pub) so the taker can prove this reply came from the
+      // account that posted the offer, not a slot-squatting impostor.
+      let sig = null;
+      if (authSign) { try { sig = await authSign(await authMsg(offerHash, pub)); } catch (e) { sig = null; } }
+      const reply = { v: 1, pub: hx(pub) };
+      if (sig && sig.length) reply.sig = hx(sig);
+      await relay.post(rvRespBox(offerHash), slot, jsonBytes(reply));
       const shared = await ecdhShared(kp, hb(rj.pub));
       const d = await M.derive(shared, false);
       return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), deal: rj.deal, cert: rj.cert || null, shared: hx(shared), slot };

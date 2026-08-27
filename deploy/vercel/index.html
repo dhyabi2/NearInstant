@@ -1573,7 +1573,7 @@ async function smartPollTake() {
   // posted price may be minutes old; matching it is not the same as winning.
   const certifyTake = (deal) => certPrice().then(price =>
     TP.certify(deal, smartState.intent.side === 0, price, { minBps: CERT.MIN_ACCEPT_BPS, maxAgeMs: CERT.MAX_MID_AGE_MS }));
-  try { hs = await TP.makerPollTake(M, tpRelay(), smartState.offerHash, smartState.intent, smartState.maxXnoRaw, certifyTake); }
+  try { hs = await TP.makerPollTake(M, tpRelay(), smartState.offerHash, smartState.intent, smartState.maxXnoRaw, certifyTake, expAuthSign); }
   catch (e) {
     smartStat([["Status", "could not read the rendezvous (" + e.message + ")", "warn"]]);
     return false;
@@ -1828,6 +1828,9 @@ async function expInit() {
   }
 }
 // The page identity doubles as a small real Nano account (fund it to post).
+// Sign the rendezvous handshake with the page identity — the same account that
+// posts our offers — so a taker can verify our accept came from us.
+function expAuthSign(msg) { try { return expWasm.msg_sign(expSeed(), msg); } catch (e) { return null; } }
 function expSeed() {
   try {
     let s = localStorage.getItem("xnoxmr_exp_seed");
@@ -4080,7 +4083,11 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
       }
     } catch (e) {}
     tpLog("posting take-request + waiting for the maker…");
-    const hs = await TP.takerHandshake(M, tpRelay(), swSelected, deal, tpLog);
+    // Verify the maker's accept is signed by the account that posted this offer
+    // (swSelected.maker) — defeats a slot-squatting man-in-the-middle.
+    const makerAcctBytes = walletWasm.nano_address_decode(String(swSelected.maker || "").trim());
+    const authVerify = (msg, sig) => { try { return walletWasm.nano_check(makerAcctBytes, msg, sig); } catch (e) { return false; } };
+    const hs = await TP.takerHandshake(M, tpRelay(), swSelected, deal, tpLog, authVerify);
     await tpRun(hs, deal, roleIsA, String(deal.offerHash).toLowerCase() + "-T", tpLog, "taker", extDest);
     tpLog("swap complete ✓ — " + (roleIsA ? "XMR" : "XNO") + " sent to " + extDest.slice(0, 12) + "…" + extDest.slice(-6));
     swOffersRefresh(true);
@@ -4103,7 +4110,7 @@ if ($("tpWait")) $("tpWait").onclick = async () => {
     tpLog("waiting for a taker on offer " + String(mine.blockHash).slice(0, 10) + "…");
     let hs = null;
     for (let i = 0; i < 200 && !hs; i++) {
-      hs = await TP.makerPollTake(M, relay, mine.blockHash, mine.intent, offerMaxXnoRaw(mine.intent));
+      hs = await TP.makerPollTake(M, relay, mine.blockHash, mine.intent, offerMaxXnoRaw(mine.intent), undefined, expAuthSign);
       if (!hs) await new Promise((r) => setTimeout(r, 5000));
     }
     if (!hs) { tpLog("no taker arrived (timed out)."); return; }
