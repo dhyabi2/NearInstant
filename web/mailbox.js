@@ -71,9 +71,19 @@
       const seq = this.sseq, nonce = await slotNonce(this.send_box, seq);
       const ct = new Uint8Array(await subtle.encrypt(
         { name: "AES-GCM", iv: nonce, additionalData: aad(this.send_box, seq) }, this.key, msg));
-      let ok = false;
-      for (const r of this.relays) { try { if (await r.post(this.send_box, seq, ct)) ok = true; } catch (e) {} }
-      if (!ok) throw new Error("all relays failed");
+      // WIRE-LEVEL RESILIENCE (root cause of "recv timeout at confirming joint
+      // accounts"): a ceremony message is a large multi-chunk on-chain post,
+      // and ONE transient failure (stale frontier, node hiccup, PoW blip) used
+      // to kill the sender's whole ceremony while the peer waited blind for
+      // 240 s. Retrying here is safe by construction: the ciphertext for a
+      // given (key, box, seq) is DETERMINISTIC — nonce and AAD derive from the
+      // slot — so re-posting after a partial failure re-sends identical bytes.
+      let ok = false, lastErr = "all relays failed";
+      for (let round = 0; round < 4 && !ok; round++) {
+        if (round) await new Promise((r) => setTimeout(r, 3000 * round));
+        for (const r of this.relays) { try { if (await r.post(this.send_box, seq, ct)) { ok = true; break; } } catch (e) { lastErr = String(e && e.message || e); } }
+      }
+      if (!ok) throw new Error("could not deliver a protocol message after 4 rounds (" + lastErr + ")");
       this.sseq = seq + 1;
     }
     async recv() {
