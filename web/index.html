@@ -592,11 +592,26 @@
               </div>
               <div class="sub" id="tpDepStatus" style="margin-top:.55rem;font-weight:800;color:var(--burnt)"></div>
             </div>
+            <div id="tpTicker" class="hidden" style="margin-top:.5rem;border:2px solid var(--ink);background:#fff;box-shadow:3px 3px 0 var(--ink);padding:.5rem .7rem;font-size:.78rem;font-weight:700"></div>
             <pre class="swlog" id="tpLog" data-persist="nearinstant_tplog" style="margin-top:.5rem;max-height:16rem;overflow:auto">idle</pre>
             <details style="margin-top:.6rem">
               <summary class="hint" style="cursor:pointer">I posted an offer myself (maker tools)</summary>
               <div class="hint" style="margin:.4rem 0">Smart Offer (Earn tab) already listens for takers while it runs. This button does the same once, for an offer you posted earlier on this device.</div>
               <button id="tpWait" style="width:100%">Wait for a taker on my offer</button>
+            </details>
+            <details style="margin-top:.6rem">
+              <summary class="hint" style="cursor:pointer">Limit order — take automatically when the price hits your target</summary>
+              <div class="hint" style="margin:.4rem 0">Zero-install automation: keep this tab open with your wallet unlocked, and the page takes a live offer for you the moment it meets your target — through the exact same protections as a manual take. Executes ONCE, then disarms. Never re-arms itself after a reload.</div>
+              <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.4rem 0">
+                <label style="flex:1;min-width:9rem;font-size:.72rem;font-weight:800">Target price (XMR/XNO)<input id="loPrice" type="number" step="any" inputmode="decimal" style="width:100%;font-family:inherit;font-size:.9rem;padding:.4rem;border:2px solid var(--ink)"></label>
+                <label style="flex:1;min-width:9rem;font-size:.72rem;font-weight:800">Amount to pay (<span id="loCoin">XNO</span>)<input id="loAmt" type="number" step="any" inputmode="decimal" style="width:100%;font-family:inherit;font-size:.9rem;padding:.4rem;border:2px solid var(--ink)"></label>
+              </div>
+              <div class="sub" style="font-size:.7rem">Receive address comes from the address field above — fill it in first. Direction is the currently selected side.</div>
+              <div style="display:flex;gap:.5rem;margin-top:.5rem">
+                <button id="loArm" style="flex:1;font-family:inherit;font-weight:800;font-size:.82rem;padding:.5rem;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer">Arm limit order</button>
+                <button id="loDisarm" style="font-family:inherit;font-weight:800;font-size:.82rem;padding:.5rem .9rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Disarm</button>
+              </div>
+              <div class="sub" id="loStat" style="margin-top:.45rem;font-weight:800">not armed</div>
             </details>
           </div>
           <!-- only shown if an older one-page settlement test is still finishing on this device -->
@@ -3141,7 +3156,10 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
     store.set("acceptCert", c);
     }
   }
-  const result = await (roleIsA ? TP.runA : TP.runB)(tpDeps(store, note, xmrDest), party) || {};
+  tpActiveStore = store; try { tpTickerRender(); } catch (e) {}
+  let result;
+  try { result = await (roleIsA ? TP.runA : TP.runB)(tpDeps(store, note, xmrDest), party) || {}; }
+  finally { tpActiveStore = null; try { tpTickerRender(); } catch (e) {} }
   store.set("done", { at: Date.now(), result });
   tpIndexUpsert(sessionId, { done: true, doneAt: Date.now(), outcome: result.declined ? "declined" : result.refunded ? "refunded" : "settled" });
   if (result.declined || result.refunded) {
@@ -4434,6 +4452,95 @@ async function tpVerifyFinished() {
   tpSessionsRender();
 }
 if ($("tpVerifyDone")) $("tpVerifyDone").onclick = (ev) => { ev.preventDefault(); tpVerifyFinished().catch((e) => tpLog("verify failed: " + (e && e.message || e))); };
+// ---- Block 3: HONEST value-during-wait ticker -------------------------------
+// While a swap runs, show REAL numbers every 30 s: the protocol phase, the mid
+// the deal was locked at, the live market, and the unrealised position vs the
+// baseline — the same math the abort gate uses. No simulated yield, no theater:
+// the wait displays what is actually true.
+let tpActiveStore = null;
+function tpPhaseLabel(st) {
+  if (st.get("sweep")) return "sweeping your XMR home";
+  if (st.get("x")) return "secret revealed — sweeping next";
+  if (st.get("claim")) return "claim broadcast — finishing";
+  if (st.get("presigned")) return "claim committed — waiting for the counterparty";
+  if (st.get("lockseen")) return "XMR lock seen — counting confirmations";
+  if (st.get("lock")) return "your XMR locked — counting confirmations";
+  if (st.get("refund")) return "refund secured — verifying the other leg";
+  if (st.get("open")) return "joint account open";
+  if (st.get("fund")) return "XNO funded";
+  return "key ceremony";
+}
+async function tpTickerRender() {
+  const el = $("tpTicker"); if (!el) return;
+  const st = tpActiveStore, TP = window.XnoxmrTwoParty;
+  if (!st || !TP) { el.classList.add("hidden"); return; }
+  const base = st.get("acceptCert");
+  if (!base || !base.mid || !base.deal) { el.textContent = "⏳ " + tpPhaseLabel(st); el.classList.remove("hidden"); return; }
+  let line = "⏳ " + tpPhaseLabel(st) + " · locked-in mid " + Number(base.mid).toFixed(9);
+  try {
+    const pr = await certPrice();
+    if (pr && pr.ok) {
+      const drift = (pr.mid - base.mid) / base.mid;
+      const c = TP.certify(base.deal, base.roleIsA, { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now(), stress: 1 },
+                           { minBps: -1e9, baseline: base, maxUnrealizedLossBps: 1e9, maxAgeMs: 10 * 60 * 1000 });
+      line += " · market " + pr.mid.toFixed(9) + " (" + (drift >= 0 ? "+" : "") + (drift * 100).toFixed(2) + "%)";
+      if (c && c.unrealizedBps != null) line += " · unrealised " + (c.unrealizedBps >= 0 ? "+" : "") + c.unrealizedBps + " bps (auto-abort at −50)";
+    } else line += " · market feed unavailable (retrying)";
+  } catch (e) { line += " · market feed unavailable (retrying)"; }
+  el.textContent = line; el.classList.remove("hidden");
+}
+setInterval(() => { tpTickerRender().catch(() => {}); }, 30000);
+
+// ---- Block 4: LIMIT ORDER — zero-install taker automation -------------------
+// Arm a target; the page watches the live book and, the moment a real offer
+// meets it, executes through the EXACT same hardened take pipeline as a manual
+// tap (re-resolve, fund checks, agreed mid, signed handshake — everything).
+// Executes once then disarms. NEVER self-arms after a reload: spending needs a
+// fresh human click, so a saved order only pre-fills the form.
+let loOrder = (() => { try { return JSON.parse(localStorage.getItem("nearinstant_limit") || "null"); } catch (e) { return null; } })();
+let loArmed = false;
+function loStatSet(m) { const e = $("loStat"); if (e) e.textContent = m; }
+function loSave() { try { localStorage.setItem("nearinstant_limit", JSON.stringify(loOrder)); } catch (e) {} }
+if ($("loArm")) {
+  // pre-fill a saved (but never auto-armed) order
+  if (loOrder) {
+    if ($("loPrice")) $("loPrice").value = String(loOrder.price);
+    if ($("loAmt")) $("loAmt").value = String(loOrder.amt);
+    loStatSet("saved order found (target " + loOrder.price + ", " + loOrder.amt + " " + (loOrder.side === "xmr" ? "XMR" : "XNO") + ") — press Arm to activate");
+  }
+  const loCoinSync = () => { if ($("loCoin")) $("loCoin").textContent = swSide === "xmr" ? "XMR" : "XNO"; };
+  loCoinSync(); document.querySelectorAll("#swSideSel button").forEach(b => b.addEventListener("click", () => setTimeout(loCoinSync, 0)));
+  $("loArm").onclick = () => {
+    const price = parseFloat(($("loPrice").value || "").trim()), amt = parseFloat(($("loAmt").value || "").trim());
+    if (!tpWalletOpen()) { loStatSet("unlock your wallet first — the order needs it to execute"); return; }
+    if (!tpDestOk()) { loStatSet("fill a valid receive address in the field above first"); return; }
+    if (!(price > 0) || !(amt > 0)) { loStatSet("enter a target price and an amount"); return; }
+    loOrder = { side: swSide, price, amt, dest: tpDestVal(), at: Date.now() }; loSave(); loArmed = true;
+    loStatSet("⚡ ARMED: will automatically pay " + amt + " " + (swSide === "xmr" ? "XMR" : "XNO") + " when a live offer " + (swSide === "xno" ? "pays ≥ " : "asks ≤ ") + price + " XMR/XNO · receive → " + loOrder.dest.slice(0, 12) + "… · keep this tab open, wallet unlocked");
+  };
+  $("loDisarm").onclick = () => { loArmed = false; loStatSet("disarmed (order kept — Arm to reactivate)"); };
+  async function loTick() {
+    if (!loArmed || !loOrder) return;
+    if (window.__tpTakeRunning) { loStatSet("⚡ armed — a swap is currently running"); return; }
+    if (!tpWalletOpen()) { loStatSet("⚡ armed but the wallet is LOCKED — unlock to allow execution"); return; }
+    if (swSide !== loOrder.side) { const b = document.querySelector('#swSideSel button[data-s="' + loOrder.side + '"]'); if (b) b.click(); return; }
+    let offers = [];
+    try { offers = await expBeacon.scanLive(rpcState.nano, "XNO/XMR", swWantSide(), OFFER_TTL_SECS); } catch (e) { loStatSet("⚡ armed — book scan failed, retrying"); return; }
+    const hit = offers.find((o) => { const pv = Number(o.intent.price_e9) / 1e9; return loOrder.side === "xno" ? pv >= loOrder.price : pv <= loOrder.price; });
+    if (!hit) { loStatSet("⚡ armed — waiting: best " + (offers.length ? (Number(offers[0].intent.price_e9) / 1e9).toFixed(9) : "no live offer") + " vs target " + loOrder.price); return; }
+    swSelected = hit; try { swSelRender(hit); } catch (e) {}
+    $("tpAmount").value = String(loOrder.amt); try { tpSync("pay"); tpQuoteRender(); } catch (e) {}
+    if ($("tpDest")) $("tpDest").value = loOrder.dest;
+    const d = tpDealFromInput();
+    if (!d || d.tooSmall || d.tooBig || d.unviable) { loStatSet("⚡ armed — target met but not fillable at " + loOrder.amt + (d && d.tooSmall ? " (min ~" + d.minXno.toFixed(1) + " XNO)" : "")); return; }
+    loArmed = false;   // one-shot: never a runaway repeat
+    loStatSet("target HIT — executing now (order disarmed; Arm again for another)");
+    tpLog("⚡ LIMIT ORDER: target " + loOrder.price + " met by offer " + String(hit.blockHash).slice(0, 10) + "… — executing automatically through the standard pipeline.");
+    try { $("tpTake").onclick(); } catch (e) {}                       // tap 1: review (builds the pending deal)
+    setTimeout(() => { try { $("tpTake").onclick(); } catch (e) {} }, 500);   // tap 2: confirm — commits
+  }
+  setInterval(() => { loTick().catch(() => {}); }, 20000);
+}
 // ---- local history of settled swaps ----------------------------------------
 function histRender() {
   const box = $("histBox"); if (!box) return;
