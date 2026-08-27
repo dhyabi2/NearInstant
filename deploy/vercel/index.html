@@ -1552,6 +1552,7 @@ function smartWatchRv() {
   smartWsSub();
 }
 setInterval(smartWsSub, 10000);   // re-subscribe when the offer block changes (repost/reprice)
+setInterval(() => { try { if (smartWs && smartWs.readyState === 1) smartWs.send(JSON.stringify({ action: "ping" })); } catch (e) {} }, 30000);   // keepalive: ws.nano.to drops idle sockets
 async function smartPollTake() {
   const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
   if (!TP || !M || !smartState.offerHash) return false;

@@ -28,10 +28,26 @@ const NANO_NODES = env("XNOXMR_NANO_NODES",
   .split(",").map(s => s.trim()).filter(Boolean);
 
 const TP = require(path.join(ROOT, "web/two_party.js"));   // certify() - the same code the app gates on
-const beacon = B.makeBeacon(wasm, { workUrl: WORK_URL });
+// Optional nano.to API key: sent as an Authorization header AND as `key` in the
+// JSON body for *.nano.to hosts (rpc.nano.to); appended to the ws.nano.to URL.
+const NANO_KEY = env("XNOXMR_NANO_RPC_KEY", "");
+const keyedFetch = !NANO_KEY ? undefined : async (url, init) => {
+  try {
+    if (/(^|\.)nano\.to$/i.test(new URL(url).hostname)) {
+      init = Object.assign({}, init);
+      init.headers = Object.assign({}, init.headers, { Authorization: NANO_KEY });
+      if (typeof init.body === "string" && init.body[0] === "{") {
+        try { const b = JSON.parse(init.body); if (b && !b.key) { b.key = NANO_KEY; init.body = JSON.stringify(b); } } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  return fetch(url, init);
+};
+const beacon = B.makeBeacon(wasm, { workUrl: WORK_URL, fetch: keyedFetch });
 const MIN_ACCEPT_BPS = 30;   // must match web/index.html CERT.MIN_ACCEPT_BPS
 const out = (o) => console.log(JSON.stringify(o, null, 2));
-const die = (msg, extra) => { out(Object.assign({ ok: false, error: msg }, extra || {})); process.exit(1); };
+let DIE_SOFT = false;   // watch mode: refusals throw instead of killing the process
+const die = (msg, extra) => { out(Object.assign({ ok: false, error: msg }, extra || {})); if (DIE_SOFT) { const e = new Error(msg); e.soft = true; throw e; } process.exit(1); };
 
 // ---- wallet (read from .env; never printed) --------------------------------
 function loadEnvFile() {
@@ -58,7 +74,7 @@ async function fetchJson(url, ms) {
   try { const r = await fetch(url, { signal: c.signal }); if (!r.ok) throw new Error("HTTP " + r.status); return await r.json(); }
   finally { clearTimeout(t); }
 }
-async function marketPrice() {
+async function marketPriceOnce() {
   const got = [];
   try { const j = await fetchJson("https://api.coingecko.com/api/v3/simple/price?ids=nano,monero&vs_currencies=usd");
     const p = j.nano.usd / j.monero.usd; if (p > SANE_MIN && p < SANE_MAX) got.push(p); } catch (e) {}
@@ -71,6 +87,17 @@ async function marketPrice() {
   if ((Math.max(...got) - Math.min(...got)) / mean > AGREE_TOL)
     return { ok: false, reason: "price sources disagree, holding to be safe" };
   return { ok: true, mid: mean, sources: got.length };
+}
+// Transient oracle blips (one source timing out at startup) held the maker for
+// whole tick intervals. Retry with a short backoff before declaring no quote.
+async function marketPrice() {
+  let last = null;
+  for (const delay of [0, 3000, 8000]) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    last = await marketPriceOnce();
+    if (last.ok) return last;
+  }
+  return last;
 }
 
 // ---- quote (mirrors RATE/quoteBps/sigmaDaily in web/index.html) ------------
@@ -581,6 +608,9 @@ CMDS.tick = async (args) => {
             } catch (e) { act("settlement error (safe to retry next tick): " + (e && e.message || e)); }
           } else {
             act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - HAND OFF (autosettle off)");
+            // Tell the taker NOW instead of letting them wait out the 10-min
+            // handshake window: hand-off mode needs a human to settle.
+            if (live) { try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is in hand-off mode (autosettle off) — a human must settle; retry in a few minutes or pick another offer"); act("told the taker not to wait (hand-off decline)"); } catch (e) {} }
           }
         }
         else { act("declining slot " + r.slot + ": " + (r.cert && r.cert.reason)); if (live) await TP.postDecline(relayFor(seed), st.offer.block, r.slot, r.cert && r.cert.reason); }
@@ -664,16 +694,25 @@ CMDS.settle = async () => {
 CMDS.watch = async (args) => {
   const seed = makerSeed(); if (!seed) return die("no maker wallet configured");
   if (!args.live) return die("watch is a live maker loop — re-run with --live");
-  const WS_URL = env("XNOXMR_NANO_WS", "wss://ws.nano.to");
+  DIE_SOFT = true;   // inside watch a refused tick logs and continues, never exits
+  const WS_URL0 = env("XNOXMR_NANO_WS", "wss://ws.nano.to");
+  const WS_URL = (NANO_KEY && /ws\.nano\.to/.test(WS_URL0) && WS_URL0.indexOf("?") < 0) ? WS_URL0 + "/?key=" + encodeURIComponent(NANO_KEY) : WS_URL0;
   const tickMs = Math.max(30000, parseInt(env("XNOXMR_TICK_MS", "180000"), 10) || 180000);
+  const TICK_TIMEOUT = Math.max(60000, parseInt(env("XNOXMR_TICK_TIMEOUT_MS", "900000"), 10) || 900000);
   const log = (m) => console.error("[watch " + new Date().toISOString().slice(11, 19) + "] " + m);
-  let running = false, queued = false;
+  let running = 0, queued = false;                    // running = start ts (0 = idle)
   const runTick = async (why) => {
-    if (running) { queued = true; return; }
-    running = true;
+    if (running) {
+      const secs = Math.round((Date.now() - running) / 1000);
+      if (Date.now() - running > TICK_TIMEOUT) {
+        log("tick stuck " + secs + "s — releasing the guard (session steps are store-guarded, safe to re-enter)");
+        running = 0;
+      } else { queued = true; log("tick busy " + secs + "s (" + why + ") — queued"); return; }
+    }
+    const me = running = Date.now();
     try { log("tick (" + why + ")"); await CMDS.tick(args); }
-    catch (e) { log("tick error: " + (e && e.message || e)); }
-    finally { running = false; if (queued) { queued = false; setTimeout(() => runTick("queued"), 250); } }
+    catch (e) { log("tick " + (e && e.soft ? "refused" : "error") + ": " + (e && e.message || e)); }
+    finally { if (running === me) running = 0; if (queued) { queued = false; setTimeout(() => runTick("queued"), 250); } }
   };
   let ws = null, watched = "";
   const rvAddress = async () => {
@@ -694,17 +733,27 @@ CMDS.watch = async (args) => {
   const connect = () => {
     try { ws = new WebSocket(WS_URL); } catch (e) { setTimeout(connect, 15000); return; }
     ws.onopen = () => { watched = ""; resub(); };
-    ws.onmessage = (ev) => {
-      try { const d = JSON.parse(String(ev.data)); if (d && d.topic === "confirmation") {
-        const n = Date.now(); if (n - lastNudge > 3000) { lastNudge = n; log("rendezvous activity — accepting now"); runTick("websocket"); } } } catch (e) {}
+    ws.onmessage = async (ev) => {
+      try {
+        // Node's native WebSocket can deliver Blob/ArrayBuffer frames; a bare
+        // String(ev.data) is "[object Blob]" and JSON.parse throws — which
+        // silently dropped EVERY realtime event. Decode all frame shapes.
+        let raw = ev.data;
+        if (typeof raw !== "string") raw = (raw && raw.text) ? await raw.text() : Buffer.from(raw).toString("utf8");
+        const d = JSON.parse(raw);
+        if (d && d.topic === "confirmation") {
+          const n = Date.now(); if (n - lastNudge > 3000) { lastNudge = n; log("rendezvous activity — accepting now"); runTick("websocket"); }
+        }
+      } catch (e) { log("ws frame decode: " + (e && e.message || e)); }
     };
-    ws.onclose = () => { ws = null; setTimeout(connect, 5000); };
-    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    ws.onclose = (ev) => { log("ws closed (code " + ((ev && ev.code) || "?") + ") — reconnecting in 5s"); ws = null; setTimeout(connect, 5000); };
+    ws.onerror = (ev) => { log("ws error" + (ev && ev.message ? ": " + ev.message : "")); try { ws.close(); } catch (e) {} };
   };
   connect();
   await runTick("start");
   setInterval(resub, 10000);                       // follow reposts/reprices to the new rendezvous
   setInterval(() => runTick("interval"), tickMs);  // fallback: everything a cron tick did
+  setInterval(() => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ action: "ping" })); } catch (e) {} }, 30000);  // keepalive: ws.nano.to drops idle sockets (~2 min)
   log("realtime maker running — ws " + WS_URL + ", fallback tick every " + Math.round(tickMs / 1000) + "s. Ctrl-C stops (state is persisted; crash recovery resumes).");
   await new Promise(() => {});                     // stay alive
 };
