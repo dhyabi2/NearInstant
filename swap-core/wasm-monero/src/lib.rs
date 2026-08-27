@@ -439,27 +439,40 @@ mod node_client {
                 .map_err(|e| js(format!("view pair: {e:?}")))?;
             let mut scanner = Scanner::new(pair);
             let mut found = Vec::new();
-            for n in from..=to {
-                if let Some(cb) = &on_block {
-                    let _ = cb.call1(&JsValue::NULL, &JsValue::from_f64(f64::from(n)));
-                }
-                let block = self
+            // FAST SYNC: batch the fetch with `get_blocks.bin` (many blocks per
+            // HTTP request) instead of one round-trip per block — the same
+            // mechanism wallet2 / Cake Wallet use. `contiguous_scannable_blocks`
+            // wraps get_blocks.bin and paginates the range internally; we chunk
+            // it only to bound memory and report progress. Each block carries its
+            // OWN RingCT output-index base, so scan order does not matter.
+            const CHUNK: u32 = 128;
+            let mut start = from.max(1);
+            while start <= to {
+                let end = start.saturating_add(CHUNK - 1).min(to);
+                let blocks = self
                     .daemon
-                    .scannable_block_by_number(n as usize)
+                    .contiguous_scannable_blocks(start as usize..=end as usize)
                     .await
-                    .map_err(|e| js(format!("block {n}: {e:?}")))?;
-                let outs = scanner
-                    .scan(block)
-                    .map_err(|e| js(format!("scan {n}: {e:?}")))?
-                    .not_additionally_locked();
-                for o in outs {
-                    found.push(serde_json::json!({
-                        "block": n,
-                        "amount": o.commitment().amount.to_string(),
-                        "index": o.index_on_blockchain().to_string(),
-                        "output": hex::encode(o.serialize()),
-                    }));
+                    .map_err(|e| js(format!("get_blocks {start}..={end}: {e:?}")))?;
+                for (i, block) in blocks.into_iter().enumerate() {
+                    let n = start + i as u32;
+                    if let Some(cb) = &on_block {
+                        let _ = cb.call1(&JsValue::NULL, &JsValue::from_f64(f64::from(n)));
+                    }
+                    let outs = scanner
+                        .scan(block)
+                        .map_err(|e| js(format!("scan {n}: {e:?}")))?
+                        .not_additionally_locked();
+                    for o in outs {
+                        found.push(serde_json::json!({
+                            "block": n,
+                            "amount": o.commitment().amount.to_string(),
+                            "index": o.index_on_blockchain().to_string(),
+                            "output": hex::encode(o.serialize()),
+                        }));
+                    }
                 }
+                start = end + 1;
             }
             Ok(serde_json::Value::Array(found).to_string())
         }

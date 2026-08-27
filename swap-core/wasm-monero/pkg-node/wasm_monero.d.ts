@@ -62,13 +62,6 @@ export class XmrNode {
     sweep_sign(output_hex: string, block: number, joint_secret: Uint8Array, dest: string, network: string): Promise<string>;
 }
 
-/**
- * Self-test the 2-of-2 CLSAG co-signing (I5) in the browser: run the whole
- * multisig ceremony in-process over a synthetic joint output and verify the
- * resulting CLSAG. This is the exact primitive a real two-party Monero *refund*
- * needs (neither party can sign a spend of the joint lock output alone). Proves
- * it compiles and runs in wasm without a counterparty or network.
- */
 export function xmr_cosign_selftest(): boolean;
 
 /**

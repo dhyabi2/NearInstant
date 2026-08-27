@@ -14,7 +14,7 @@ const path = require("path");
 
 const RAW_PER_XNO = 10n ** 30n;
 const XMR_UNLOCK = 10;            // confirmations before an output is spendable
-const LOOKBACK = 4320;            // ~6 days: first scan starts here
+const LOOKBACK = 720;             // ~24h: fast first sync (guided deposits are detected live)
 const MAX_INPUTS = 16;            // must match wasm-monero MAX_INPUTS
 
 const hx = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");

@@ -322,7 +322,7 @@
           const r = await scan({ from: null });   // returns the chain tip
           // Start ~6 days back so a recently-funded deposit is found without a
           // manual rescan; older deposits still use "Rescan from block".
-          const LOOKBACK = 4320;
+          const LOOKBACK = 720;            // ~24h: fast first sync; guided deposits are detected live anyway
           st.restore = Math.max(0, r.tip - LOOKBACK); st.scannedTo = st.restore; save();
         }
         let tip = st.scannedTo;

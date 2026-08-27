@@ -158,11 +158,6 @@ if (Symbol.dispose) XmrNode.prototype[Symbol.dispose] = XmrNode.prototype.free;
 exports.XmrNode = XmrNode;
 
 /**
- * Self-test the 2-of-2 CLSAG co-signing (I5) in the browser: run the whole
- * multisig ceremony in-process over a synthetic joint output and verify the
- * resulting CLSAG. This is the exact primitive a real two-party Monero *refund*
- * needs (neither party can sign a spend of the joint lock output alone). Proves
- * it compiles and runs in wasm without a counterparty or network.
  * @returns {boolean}
  */
 function xmr_cosign_selftest() {
@@ -447,7 +442,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 300, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 321, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__hc15e3e7919b5688a);
             return ret;
         },
