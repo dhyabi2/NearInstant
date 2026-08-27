@@ -936,11 +936,14 @@
       const dest = party.myWalletAcct;                          // B claims the XNO to itself
       const claimHash = deps.wasm.state_block_hash(acctHex, open.hash, acctHex, "0", dest, "send");
       let claimSig = null;
+      deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~4 min before falling back…");
+      const nag1 = setInterval(() => { try { deps.note("claim co-sign: still waiting for the counterparty on the wire…"); } catch (e) {} }, 45000);
       try {
         const pre = await adaptorPresignRole(party, claimHash, undefined, "claim");
         claimSig = deps.wasm.presig_complete(pre, party.myXmrShare);   // B has x = its own share
         if (!deps.wasm.nano_check(party._account, claimHash, claimSig)) throw new Error("completed claim invalid");
       } catch (e) {
+        clearInterval(nag1);
         if (party.__resumeFallback) {
           deps.note("could not co-sign the claim (" + (e && e.message || e) + ") — the peer seems offline; watching for their refund instead…");
           const r = await party.__resumeFallback();
@@ -948,6 +951,7 @@
           if (r !== "claimed") throw new Error("peer offline: the claim could not be co-signed and no refund has appeared yet — retry later (your locked XMR stays recoverable)");
         } else throw e;
       }
+      clearInterval(nag1);
       if (claimSig) {
         const built = buildBlock(deps.wasm, { acctHex, previous: open.hash, balance: "0", link: dest, subtype: "send", sig: claimSig });
         const I = deps.beacon._internals;
@@ -1034,6 +1038,8 @@
       // the single joint-account successor is safe either way: if their claim
       // somehow lands first, our refund is rejected and a resume extracts x.)
       let pre0;
+      deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~4 min, then your refund runs automatically…");
+      const nagA = setInterval(() => { try { deps.note("claim co-sign: still waiting for the counterparty on the wire…"); } catch (e) {} }, 45000);
       try { pre0 = await adaptorPresignRole(party, claimHash, undefined, "claim"); }
       catch (e) {
         deps.note("could not co-sign the claim with the counterparty (" + (e && e.message || e) + ") — taking your refund so your XNO comes back…");
@@ -1042,6 +1048,7 @@
         deps.note("refunded — your XNO is back. The other side recovers its XMR from the refund; nothing is lost but fees.");
         return { done: true, refunded: true, reason: "claim co-sign unavailable" };
       }
+      finally { clearInterval(nagA); }
       S.set("presigned", { at: Date.now(), pre: hx(pre0) });
     }
     let preHex = (S.get("presigned") || {}).pre;
