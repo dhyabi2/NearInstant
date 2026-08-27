@@ -315,6 +315,16 @@ elapses, and the offer stays live for the next taker. A stale `.lock` from a
 killed tick is also cleared automatically on the next tick (the holder PID is
 liveness-checked), so a crash no longer blocks the loop.
 
+**If your XMR is locked but the swap stalled** (the taker's ceremony wire dropped
+after your lock confirmed): there is nothing to abandon and nothing more to do
+proactively — the claim needs the taker's co-signature, which is gone. Just keep
+`watch --live` running. The taker holds a pre-signed refund; when they take it
+(one click on their side, or their page's auto-recovery), it publishes their
+Monero share, and your next tick recovers your locked XMR automatically
+(`checkMoved` → `recoverXmrFromRefund`). Your locked XMR is never stranded — it
+comes home once the taker refunds. Do not `settle --abandon` such a session (it
+has `lock` set and will refuse anyway).
+
 ## Environment
 
 | Var | Default |
