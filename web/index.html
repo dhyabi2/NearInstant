@@ -3015,6 +3015,18 @@ try { localStorage.removeItem("xnoxmr_twoparty"); localStorage.removeItem("xnoxm
 // Progress logs keep history (timestamped, newest at the bottom, auto-scroll)
 // and repeat the latest line in bold at the top so "what is happening right
 // now" is always one glance away, with the trail underneath.
+// ---- SVG icons: native emoji render inconsistently across platforms; these
+// render identically everywhere and inherit the text colour. Applied wherever
+// user-facing text is painted (log, ticker, statuses, quote, badges).
+const SVG_ICONS = {
+  "\u26a1": '<svg viewBox="0 0 16 16" width="12" height="12" style="vertical-align:-1px" aria-label="instant"><path d="M9 1 L3 9 h3.4 L6 15 L13 6 H8.8 Z" fill="currentColor"/></svg>',
+  "\u26a0\ufe0f": '<svg viewBox="0 0 16 16" width="12" height="12" style="vertical-align:-1px" aria-label="warning"><path d="M8 1.5 L15 14 H1 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><rect x="7.3" y="6" width="1.4" height="4" fill="currentColor"/><rect x="7.3" y="11" width="1.4" height="1.4" fill="currentColor"/></svg>',
+  "\u26a0": '<svg viewBox="0 0 16 16" width="12" height="12" style="vertical-align:-1px" aria-label="warning"><path d="M8 1.5 L15 14 H1 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><rect x="7.3" y="6" width="1.4" height="4" fill="currentColor"/><rect x="7.3" y="11" width="1.4" height="1.4" fill="currentColor"/></svg>',
+  "\u23f3": '<svg viewBox="0 0 16 16" width="12" height="12" style="vertical-align:-1px" aria-label="waiting"><path d="M4 1.5 h8 M4 14.5 h8 M4.5 2 c0 4 3 4.5 3 6 c0 1.5 -3 2 -3 6 M11.5 2 c0 4 -3 4.5 -3 6 c0 1.5 3 2 3 6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+};
+function escapeHtml(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function iconizeHtml(escaped) { let out = escaped; for (const [ch, svg] of Object.entries(SVG_ICONS)) out = out.split(ch).join(svg); return out; }
+function setIconText(el, text) { el.innerHTML = iconizeHtml(escapeHtml(text)); }
 function logTo(id, m) {
   const el = $(id); if (!el) return;
   const t = new Date().toTimeString().slice(0, 8);
@@ -3025,9 +3037,7 @@ function logTo(id, m) {
   // Survive a page refresh: mirror the log to localStorage when the element
   // opts in (data-persist="key"), so a swap's status is not lost on reload.
   if (el.dataset.persist) { try { localStorage.setItem(el.dataset.persist, el.dataset.lines); } catch (e) {} }
-  el.textContent = "";
-  const now = document.createElement("b"); now.textContent = "▶ " + m + "\n\n"; el.append(now);
-  const hist = document.createElement("span"); hist.className = "dim"; hist.textContent = lines.join("\n"); el.append(hist);
+  el.innerHTML = "<b>" + iconizeHtml(escapeHtml("▶ " + m)) + "\n\n</b><span class=\"dim\">" + iconizeHtml(escapeHtml(lines.join("\n"))) + "</span>";
   el.scrollTop = el.scrollHeight;
 }
 function logRestore(id) {
@@ -3036,9 +3046,8 @@ function logRestore(id) {
   if (!raw) return;
   let lines; try { lines = JSON.parse(raw); } catch (e) { return; }
   if (!Array.isArray(lines) || !lines.length) return;
-  el.dataset.lines = raw; el.textContent = "";
-  const mark = document.createElement("b"); mark.textContent = "▶ restored after refresh — reopen an Unfinished swap to resume\n\n"; el.append(mark);
-  const hist = document.createElement("span"); hist.className = "dim"; hist.textContent = lines.join("\n"); el.append(hist);
+  el.dataset.lines = raw;
+  el.innerHTML = "<b>" + iconizeHtml(escapeHtml("▶ restored after refresh — reopen an Unfinished swap to resume")) + "\n\n</b><span class=\"dim\">" + iconizeHtml(escapeHtml(lines.join("\n"))) + "</span>";
   el.scrollTop = el.scrollHeight;
 }
 const tpLog = (m) => logTo("tpLog", m);
@@ -3108,7 +3117,7 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
   // on-chain confirmation wait before the wire recv gives up (was 120 s, which
   // could time the claim co-sign out while the counterparty was still
   // confirming the joint open). If it still can't co-sign, runA refunds.
-  hs.wire.timeoutMs = 240000;
+  hs.wire.timeoutMs = 480000;
   // Route the RECEIVED coin to the taker's external address (never the in-page
   // wallet): role A receives XMR → sweep dest; role B receives XNO → claim dest
   // (via myWalletAcct, which both parties co-sign the claim block to).
@@ -4484,7 +4493,7 @@ async function tpTickerRender() {
   const st = tpActiveStore, TP = window.XnoxmrTwoParty;
   if (!st || !TP) { el.classList.add("hidden"); return; }
   const base = st.get("acceptCert");
-  if (!base || !base.mid || !base.deal) { el.textContent = "⏳ " + tpPhaseLabel(st); el.classList.remove("hidden"); return; }
+  if (!base || !base.mid || !base.deal) { setIconText(el, "\u23f3 " + tpPhaseLabel(st)); el.classList.remove("hidden"); return; }
   let line = "⏳ " + tpPhaseLabel(st) + " · locked-in mid " + Number(base.mid).toFixed(9);
   try {
     const pr = await certPrice();
@@ -4496,7 +4505,7 @@ async function tpTickerRender() {
       if (c && c.unrealizedBps != null) line += " · unrealised " + (c.unrealizedBps >= 0 ? "+" : "") + c.unrealizedBps + " bps (auto-abort at −50)";
     } else line += " · market feed unavailable (retrying)";
   } catch (e) { line += " · market feed unavailable (retrying)"; }
-  el.textContent = line; el.classList.remove("hidden");
+  setIconText(el, line); el.classList.remove("hidden");
 }
 setInterval(() => { tpTickerRender().catch(() => {}); }, 30000);
 
@@ -4508,7 +4517,7 @@ setInterval(() => { tpTickerRender().catch(() => {}); }, 30000);
 // fresh human click, so a saved order only pre-fills the form.
 let loOrder = (() => { try { return JSON.parse(localStorage.getItem("nearinstant_limit") || "null"); } catch (e) { return null; } })();
 let loArmed = false;
-function loStatSet(m) { const e = $("loStat"); if (e) e.textContent = m; }
+function loStatSet(m) { const e = $("loStat"); if (e) setIconText(e, m); }
 function loSave() { try { localStorage.setItem("nearinstant_limit", JSON.stringify(loOrder)); } catch (e) {} }
 if ($("loArm")) {
   // pre-fill a saved (but never auto-armed) order

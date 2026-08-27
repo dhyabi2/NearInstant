@@ -265,7 +265,7 @@
     if (S) S.set(key, my);                       // persist BEFORE use: a crash never reuses an attempt
     const sharedB = hb(R.sharedHex);
     const mk = async (att) => { const d = await R.M.derive(await stepSalt(sharedB, step, att), R.init); return new R.M.MailboxWire([R.relay], d.send, d.recv, d.key); };
-    const sendW = await mk(my); sendW.pollMs = 2000; sendW.timeoutMs = 240000;
+    const sendW = await mk(my); sendW.pollMs = 2000; sendW.timeoutMs = 480000;
     const cands = [];
     for (let a = Math.max(1, my - 2); a <= my + 2; a++) { const w = await mk(a); w.pollMs = 1500; w.timeoutMs = 6000; cands.push(w); }
     let lockedW = null;
@@ -273,10 +273,10 @@
       send: (pt) => sendW.send(pt),
       async recv() {
         if (lockedW) return lockedW.recv();
-        const until = Date.now() + 240000;
+        const until = Date.now() + 480000;
         while (Date.now() < until) {
           for (const w of cands) {
-            try { const pt = await w.recv(); lockedW = w; lockedW.timeoutMs = 240000; return pt; }
+            try { const pt = await w.recv(); lockedW = w; lockedW.timeoutMs = 480000; return pt; }
             catch (e) { /* nothing on this attempt-channel yet */ }
           }
         }
@@ -949,9 +949,9 @@
       const dest = party.myWalletAcct;                          // B claims the XNO to itself
       const claimHash = deps.wasm.state_block_hash(acctHex, open.hash, acctHex, "0", dest, "send");
       let claimSig = null;
-      deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~4 min before falling back…");
+      deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~8 min before falling back…");
       const cs1 = Date.now();
-      const nag1 = setInterval(() => { try { deps.note("claim co-sign: " + pbar((Date.now()-cs1)/240000) + " still waiting for the counterparty on the wire (falls back at 100%)"); } catch (e) {} }, 45000);
+      const nag1 = setInterval(() => { try { deps.note("claim co-sign: " + pbar((Date.now()-cs1)/480000) + " still waiting for the counterparty on the wire (falls back at 100%)"); } catch (e) {} }, 45000);
       try {
         const pre = await adaptorPresignRole(party, claimHash, undefined, "claim");
         claimSig = deps.wasm.presig_complete(pre, party.myXmrShare);   // B has x = its own share
@@ -1052,9 +1052,9 @@
       // the single joint-account successor is safe either way: if their claim
       // somehow lands first, our refund is rejected and a resume extracts x.)
       let pre0;
-      deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~4 min, then your refund runs automatically…");
+      deps.note("claim co-sign: contacting the counterparty on the encrypted wire — they must be online; this waits up to ~8 min, then your refund runs automatically…");
       const csA = Date.now();
-      const nagA = setInterval(() => { try { deps.note("claim co-sign: " + pbar((Date.now()-csA)/240000) + " still waiting for the counterparty on the wire (your refund runs automatically at 100%)"); } catch (e) {} }, 45000);
+      const nagA = setInterval(() => { try { deps.note("claim co-sign: " + pbar((Date.now()-csA)/480000) + " still waiting for the counterparty on the wire (your refund runs automatically at 100%)"); } catch (e) {} }, 45000);
       try { pre0 = await adaptorPresignRole(party, claimHash, undefined, "claim"); }
       catch (e) {
         deps.note("could not co-sign the claim with the counterparty (" + (e && e.message || e) + ") — taking your refund so your XNO comes back…");
