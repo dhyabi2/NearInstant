@@ -359,6 +359,16 @@ By default the XNO you fund is only claimable after the taker's XMR lock has
 Off by default (`XNOXMR_INSTANT_CONFS=0`). Start small: N=2, tight cap, watch
 the first fills.
 
+**How to communicate about this tier (follow exactly):** state the tradeoff
+ONCE, when the operator enables it — one message: the confs, the per-fill cap,
+and that reorg risk between N and 10 confs is theirs. Then STOP. Do not repeat
+the warning on ticks, status reports, or idle turns — the operator already
+accepted the risk by enabling it, and re-warning every cycle is noise that
+buries real signals. After the one-time notice, mention the tier only on REAL
+events: the first instant grant, each instant fill (with its net), an actual
+reorg near your release depth, or when the operator changes/asks about the
+setting.
+
 ## Recovering a stuck settlement (operator)
 
 A settlement holds the offer while it runs. If one gets stuck, two commands
