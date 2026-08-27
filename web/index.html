@@ -3144,7 +3144,7 @@ function tpDealFromInput() {
   // decline this and you would wait out a timeout for nothing. Same math the
   // maker runs, on public inputs (its price, the market mid, the fee).
   if (TP && swLastMid) {
-    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swLastMid, null, CERT.MIN_ACCEPT_BPS);
+    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swViableMid(swSelected.intent.side), null, CERT.MIN_ACCEPT_BPS);
     if (minRaw === null) return { unviable: true };
     if (xnoRaw < BigInt(minRaw)) return { tooSmall: true, minXno: Number(BigInt(minRaw) / (10n ** 24n)) / 1e6 };
   }
@@ -3153,6 +3153,16 @@ function tpDealFromInput() {
   if (TP) { try { return TP.dealFromOffer(swSelected, xnoRaw.toString()); } catch (e) { return null; } }
   return d;
 }
+// The maker re-certifies a take with ITS OWN oracle mid, which can differ from
+// ours by a fraction of a percent. Our viability pre-check must not hard-block a
+// genuinely-good offer just because our mid drifted the wrong way. So we test the
+// maker's profitability at a mid nudged in the maker's favour by an oracle-
+// divergence allowance (side 0 sells XNO → profits as mid falls, so nudge down;
+// side 1 sells XMR → profits as mid rises, so nudge up). A clearly-underwater
+// offer still fails; a marginal one is left for the maker's own fast
+// accept/decline to settle, instead of being blocked here on oracle noise.
+const SW_ORACLE_TOL = 0.01;   // 1% allowance for oracle divergence
+function swViableMid(side) { return side === 0 ? swLastMid * (1 - SW_ORACLE_TOL) : swLastMid * (1 + SW_ORACLE_TOL); }
 const raw2 = (raw, scale) => { const t = BigInt(raw).toString().padStart(scale + 1, "0"); return ((t.slice(0, -scale) + "." + t.slice(-scale)).replace(/0+$/, "").replace(/\.$/, "")) || "0"; };
 let tpPending = null;
 function tpResetReview() { tpPending = null; if ($("tpTake")) $("tpTake").textContent = "Review swap"; }
@@ -4009,7 +4019,7 @@ function tpMinSell() {
   try {
     const TP = window.XnoxmrTwoParty;
     if (!TP || !swSelected || !swLastMid) return null;
-    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swLastMid, null, CERT.MIN_ACCEPT_BPS);
+    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swViableMid(swSelected.intent.side), null, CERT.MIN_ACCEPT_BPS);
     if (!minRaw) return null;
     const minXno = Number(BigInt(minRaw) / (10n ** 24n)) / 1e6;
     if (swSide === "xno") return { amt: Math.ceil(minXno * 100) / 100, coin: "XNO" };
