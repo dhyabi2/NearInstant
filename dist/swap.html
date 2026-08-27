@@ -1814,7 +1814,7 @@ $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b
 let expWasm = null, expBeacon = null;
 // Bump on every deploy so browsers fetch fresh scripts + worker instead of a
 // stale cached copy (workers cache especially aggressively).
-const ASSET_V = "b80dff8513f8";
+const ASSET_V = "64fc9a1c7864";
 function expScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement("script");
@@ -3085,6 +3085,7 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
   const TP = window.XnoxmrTwoParty;
   const store = tpStore(sessionId);
   if (hs.instant && hs.instant.confs) store.set("instant", hs.instant);   // persist: a resumed session keeps the maker-promised tier
+  if (hs.shared) store.set("shared", { hex: hs.shared, init: role !== "maker" });   // resume-over-refund: rebuild step channels after a crash (same sensitivity as the party snapshot already stored)
   const rand = (n) => { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; };
   hs.wire.pollMs = 3000;
   // Give the live 2-of-2 claim/refund co-sign room to absorb the other side's
@@ -4339,6 +4340,9 @@ function tpSessionsRender() {
         try {
           await tpEnsure(); const TP = window.XnoxmrTwoParty;
           const party = TP.restore(walletWasm, st.get("party"), null);
+          // Resume-over-refund: with the persisted handshake secret the resumed
+          // side can re-join the co-signing rounds and COMPLETE the swap.
+          try { const shr = st.get("shared"); if (shr && shr.hex && TP.attachResume) TP.attachResume(window.XnoxmrMailbox, party, { shared: shr.hex, init: shr.init !== false, relay: tpRelay(), store: st }); } catch (e) {}
           const res = refundOnly
             ? (await TP.refundNow(tpDeps(st, tpLog), party) || {})
             : (await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party) || {});
