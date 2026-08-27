@@ -603,6 +603,7 @@
           <pre class="swlog hidden" id="swLog" style="margin-top:.7rem;max-height:12rem;overflow:auto"></pre>
           <!-- unfinished / recent person-to-person sessions on this device -->
           <div id="tpSessions" class="hidden" style="border:2px solid #a11;margin-top:.7rem;padding:.7rem .9rem"></div>
+          <div class="hint" style="margin-top:.35rem"><a href="#" id="tpVerifyDone">Verify finished swaps</a> — re-checks each finished swap’s joint account on-chain and reopens any that still holds funds (also pockets any refund still pending into your wallet).</div>
           <div id="histBox" style="margin-top:.7rem"></div>
         </div>
 
@@ -4362,6 +4363,38 @@ function tpSessionsRender() {
     if (btn) { window.__tpAutoResumed = true; tpLog("auto-recovering an unfinished swap…"); btn.click(); }
   }
 }
+// SAFETY NET: a finished swap should never hide stuck funds. "Verify finished
+// swaps" re-checks each done session's JOINT account on-chain: funds still
+// sitting there (balance or receivable) mean the outcome did not actually land
+// — the session is REOPENED so its recovery controls come back. It also pockets
+// any refund still sitting receivable on the user's own wallet (the usual
+// reason a successful refund "looks" failed: the XNO came back but was never
+// received into the balance).
+async function tpVerifyFinished() {
+  const all = tpIndexLoad().filter(x => x.done && x.jointNano).slice(0, 15);
+  if (!all.length) { tpLog("No finished swaps recorded on this device."); return; }
+  tpLog("Verifying " + all.length + " finished swap(s) against the chain\u2026");
+  try { if (walletApi && walletApi.address()) { const r = await walletApi.receive(); if (r && BigInt(r.pocketed || 0) > 0n) tpLog("pocketed a pending refund into your wallet \u2713"); } } catch (e) {}
+  const I = expBeacon && expBeacon._internals; if (!I) { tpLog("engine not loaded \u2014 open the Swap tab once and retry."); return; }
+  let reopened = 0;
+  for (const sess of all) {
+    try {
+      let held = 0n;
+      try { const info = await I.rpc(rpcState.nano, { action: "account_info", account: sess.jointNano }); if (info && info.balance) held += BigInt(info.balance); } catch (e) {}
+      try { const rcv = await I.rpc(rpcState.nano, { action: "receivable", account: sess.jointNano, count: "5", threshold: "1" });
+            const b = rcv && rcv.blocks && typeof rcv.blocks === "object" ? rcv.blocks : {};
+            for (const v of Object.values(b)) held += BigInt(typeof v === "object" ? v.amount : v); } catch (e) {}
+      if (held > 0n) {
+        reopened++;
+        tpIndexUpsert(sess.id, { done: false });
+        tpLog("\u26a0 swap " + String(sess.id).slice(0, 10) + "\u2026 still holds " + raw2(held.toString(), 30) + " XNO in its joint account \u2014 REOPENED below so you can recover it.");
+      }
+    } catch (e) {}
+  }
+  if (!reopened) tpLog("\u2713 all finished swaps verified clean \u2014 no funds left in any joint account. If a refund seemed missing, check your wallet balance now (pending XNO was pocketed).");
+  tpSessionsRender();
+}
+if ($("tpVerifyDone")) $("tpVerifyDone").onclick = (ev) => { ev.preventDefault(); tpVerifyFinished().catch((e) => tpLog("verify failed: " + (e && e.message || e))); };
 // ---- local history of settled swaps ----------------------------------------
 function histRender() {
   const box = $("histBox"); if (!box) return;
