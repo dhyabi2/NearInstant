@@ -1829,7 +1829,7 @@ $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b
 let expWasm = null, expBeacon = null;
 // Bump on every deploy so browsers fetch fresh scripts + worker instead of a
 // stale cached copy (workers cache especially aggressively).
-const ASSET_V = "79445a718e41";
+const ASSET_V = "223fb3952537";
 function expScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement("script");
@@ -4370,7 +4370,14 @@ function tpSessionsRender() {
                                  : bContinuable ? "Resume — continue the swap (lock the XMR)"
                                  : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
       b.onclick = async () => {
+        // One recovery at a time — auto-recovery plus a manual click were racing
+        // two identical runs whose scan lines interleaved unlabelled in the log.
+        if (window.__tpResumeRunning) { tpLog("a recovery is already running — wait for it to finish"); return; }
+        window.__tpResumeRunning = true;
         b.disabled = true;
+        // Task-labelled notes: recovery lines are prefixed so they never read as
+        // part of a live swap running at the same time.
+        const rnote = (m) => tpLog("recovery ▸ " + m);
         try {
           await tpEnsure(); const TP = window.XnoxmrTwoParty;
           const party = TP.restore(walletWasm, st.get("party"), null);
@@ -4378,12 +4385,13 @@ function tpSessionsRender() {
           // side can re-join the co-signing rounds and COMPLETE the swap.
           try { const shr = st.get("shared"); if (shr && shr.hex && TP.attachResume) TP.attachResume(window.XnoxmrMailbox, party, { shared: shr.hex, init: shr.init !== false, relay: tpRelay(), store: st }); } catch (e) {}
           const res = refundOnly
-            ? (await TP.refundNow(tpDeps(st, tpLog), party) || {})
-            : (await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party) || {});
+            ? (await TP.refundNow(tpDeps(st, rnote), party) || {})
+            : (await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, rnote), party) || {});
           st.set("done", { at: Date.now(), result: res }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() });
           if (!res.refunded && !res.recovered) histAdd({ at: Date.now(), role: sess.role, roleIsA: sess.roleIsA, side: sess.deal.side, xnoRaw: sess.deal.xnoRaw, xmrAtomic: sess.deal.xmrAtomic, priceE9: sess.deal.priceE9, session: sess.id });
           tpLog(res.refunded ? "refunded ✓ — your XNO is back" : res.recovered ? "recovered ✓ — your XMR is back" : "finished ✓"); tpSessionsRender();
-        } catch (e) { tpLog((refundOnly ? "refund" : "resume") + " stopped: " + (e && e.message || e)); b.disabled = false; }
+        } catch (e) { tpLog("recovery ▸ " + (refundOnly ? "refund" : "resume") + " stopped: " + (e && e.message || e)); b.disabled = false; }
+        finally { window.__tpResumeRunning = false; }
       };
     } else {
       // Not resumable yet. Two very different situations — say which, plainly,
