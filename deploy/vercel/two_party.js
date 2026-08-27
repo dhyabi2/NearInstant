@@ -710,6 +710,19 @@
     catch (e) { if (e && e.declined) { S.set("declined", e.declined); return { done: false, declined: true, reason: e.declined.reason }; } throw e; }
     if (!S.get("refund")) S.set("refund", await coSignRefundRole(deps, party, open.hash));
     if (!S.get("lock")) {
+      // RESUME GUARD: if this lock attempt is a retry (a node outage stopped the
+      // first run), the counterparty may have refunded in the meantime — the
+      // joint frontier moves off the open. Locking then would strand our XMR
+      // until recovery. Skip the lock; the checkMoved path below recovers.
+      try {
+        const info = await deps.beacon._internals.rpc(deps.urls, { action: "account_info", account: party.jointNanoAddress });
+        if (info && info.frontier && info.frontier.toLowerCase() !== String(open.hash).toLowerCase()) {
+          deps.note("the joint account moved while we were away (counterparty refunded or claimed) — not locking; recovering instead…");
+          S.set("lock", { skipped: true });   // unblock the checkMoved path; nothing was actually locked
+        }
+      } catch (e) { /* can't read the frontier: proceed, the gate still protects */ }
+    }
+    if (!S.get("lock")) {
       // LAST CHANCE. Locking XMR is the one step B cannot undo. Re-verify the
       // deal against the market NOW, not at accept time - the funding wait
       // alone can be many minutes. Declining here costs B nothing: A takes its
