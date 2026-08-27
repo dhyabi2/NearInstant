@@ -761,14 +761,21 @@
         // Resumed without the counterparty: a claim needs their co-signature,
         // so the only productive move is waiting for their (automatic) refund
         // and recovering the XMR from it. Bounded — the caller retries later.
-        const until = Date.now() + (deps.recoverWaitMs || 15 * 60 * 1000);
-        deps.note("waiting for the counterparty's refund to recover your XMR…");
+        const until = Date.now() + (deps.recoverWaitMs || 15 * 60 * 1000), t0 = Date.now();
+        deps.note("waiting for the counterparty's refund — your XMR can only be reclaimed once their refund lands on-chain (its signature reveals the key share you need). Their side broadcasts it automatically when it comes online; checking every 10 s…");
+        let lastNote = Date.now();
         while (Date.now() < until) {
           await new Promise((r) => setTimeout(r, 10000));
           mv = await checkMoved();
           if (mv) { if (await onMoved(mv) === "recovered") return { done: true, recovered: true }; break; }
+          // Narrate the wait — a silent 15-minute poll reads as a hang.
+          if (Date.now() - lastNote >= 60000) {
+            lastNote = Date.now();
+            const m = Math.round((Date.now() - t0) / 60000), left = Math.max(0, Math.round((until - Date.now()) / 60000));
+            deps.note("still waiting for the counterparty's refund… " + m + " min (checks every 10 s; gives up in ~" + left + " min — safe to close this page and retry any time, your locked XMR stays recoverable indefinitely)");
+          }
         }
-        if (!S.get("claim")) throw new Error("counterparty has not refunded yet — resume again later (your XMR stays recoverable)");
+        if (!S.get("claim")) throw new Error("the counterparty has not refunded yet, so there is nothing to reclaim from on-chain right now. Your XMR is NOT lost — it stays locked and recoverable indefinitely. Their side refunds automatically when it comes online (or after its timeout); just tap Recover again later, or leave the page open and auto-recovery will retry.");
       }
     }
     // Confirm-before-reveal, then complete the adaptor claim (reveals x on-chain).
