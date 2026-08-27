@@ -285,6 +285,23 @@
   .pgrow input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:ui-monospace,monospace;font-weight:800;font-size:1.05rem;padding:0;color:var(--ink)}
   .pgrow .pgcoin{flex:0 0 auto;font-weight:850;font-size:.82rem;letter-spacing:.02em}
   .pgarrow{text-align:center;font-weight:900;font-size:1.05rem;color:var(--burnt);line-height:.5;margin:-.05rem 0}
+  /* swap-direction: two BIG monochrome radio cards — the selected one is unmissable */
+  .swside{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;width:100%}
+  .swside button{display:flex;align-items:center;gap:.75rem;padding:.95rem 1rem;border:2px solid var(--ink);
+    background:#fff;color:var(--ink);font-family:inherit;cursor:pointer;text-align:left;box-shadow:3px 3px 0 var(--ink);
+    transition:transform .06s ease}
+  .swside button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+  .swside .rad{width:1.4rem;height:1.4rem;border:2.5px solid var(--ink);border-radius:50%;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;background:#fff}
+  .swside .rad i{width:.68rem;height:.68rem;border-radius:50%;background:transparent;display:block}
+  .swside .t{display:flex;flex-direction:column;line-height:1.2}
+  .swside .t small{font-size:.66rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .swside .t span{font-weight:850;font-size:1.05rem;letter-spacing:-.01em}
+  .swside button.on{background:var(--ink);color:#fff}
+  .swside button.on .rad{border-color:#fff;background:var(--ink)}
+  .swside button.on .rad i{background:#fff}
+  .swside button.on .t small{color:#cfcfcf}
+  @media (max-width:560px){.swside{grid-template-columns:1fr}}
   .swaggnote{font-size:.68rem;line-height:1.4;color:var(--faint);font-weight:600;margin-top:.4rem}
   .swaggnote b{color:var(--burnt);font-weight:800}
   .dot{width:.55rem;height:.55rem;background:#cfcfcf;flex:0 0 auto}
@@ -512,8 +529,11 @@
         <!-- ===================== SWAP (default) ===================== -->
         <div class="view" id="viewSwap">
           <div class="field coinsel" style="max-width:none;margin-bottom:.6rem">
-            <span class="lbl">You sell</span>
-            <div class="seg" id="swSideSel"><button data-s="xmr" class="on">Monero → get Nano</button><button data-s="xno">Nano → get Monero</button></div>
+            <span class="lbl">Choose your swap direction</span>
+            <div class="swside" id="swSideSel" role="radiogroup" aria-label="Swap direction">
+              <button data-s="xmr" class="on" role="radio" aria-checked="true"><span class="rad"><i></i></span><span class="t"><small>You sell Monero</small><span>XMR → XNO</span></span></button>
+              <button data-s="xno" role="radio" aria-checked="false"><span class="rad"><i></i></span><span class="t"><small>You sell Nano</small><span>XNO → XMR</span></span></button>
+            </div>
           </div>
 
           <!-- Stage 3: live order book (reads scanLive, cheapest first) -->
@@ -2206,6 +2226,7 @@ function swSideLabel() { return swSide === "xmr" ? "SELL MONERO → GET NANO" : 
 function swSideSetUI() {
   document.querySelectorAll("#swSideSel button").forEach(b => {
     b.classList.toggle("on", b.dataset.s === swSide);
+    b.setAttribute("aria-checked", b.dataset.s === swSide ? "true" : "false");
     b.disabled = false;
   });
 }
