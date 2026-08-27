@@ -2234,6 +2234,15 @@ async function swapEnsure() {
   if (!swapXmr) { const m = await import("./pkg-xmr/wasm_monero.js?v=" + ASSET_V); await m.default("./pkg-xmr/wasm_monero_bg.wasm?v=" + ASSET_V); swapXmr = m; }
   return window.XnoxmrBeacon.makeBeacon(walletWasm, {});
 }
+function xmrRouteTimeout(route) {
+  // get_output_distribution.bin (decoy selection) returns a large payload public
+  // nodes are slow to serve — a flat 12 s timeout made ALL nodes "fail" and the
+  // whole lock build die (observed: 2 timeouts + a gateway 502). Give the heavy
+  // routes the time they actually need; keep the default snappy.
+  if (/get_output_distribution/.test(route)) return 90000;
+  if (/get_blocks/.test(route)) return 45000;
+  return 12000;
+}
 function swapMoneroPost() {
   const nodes = rpcState.monero.map(u => String(u).replace(/\/+$/, "")).filter(Boolean);
   // ROTATE the starting node per request. A fixed order means a responsive but
@@ -2247,7 +2256,7 @@ function swapMoneroPost() {
     let lastErr = "no Monero node answered";
     const order = nodes.map((_, i) => nodes[(rr + i) % nodes.length]); rr = (rr + 1) % Math.max(1, nodes.length);
     for (const url of order) {                     // fail over: a stalled node moves to the next
-      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), xmrRouteTimeout(route));
       try {
         const r = await fetch(url + "/" + route, { method: "POST", body, signal: ctrl.signal, headers: { "content-type": j ? "application/json" : "application/octet-stream" } });
         if (!r.ok) { lastErr = "HTTP " + r.status; continue; }
@@ -4293,7 +4302,13 @@ function tpSessionsRender() {
     const st = tpStore(sess.id);
     const steps = ["lock", "lockseen", "fund", "open", "refund", "claim", "x", "sweep"].filter(k => st.get(k));
     const aRecoverable = sess.roleIsA && st.get("open") && st.get("refund");
-    const canResume = (sess.roleIsA && (st.get("x") || aRecoverable)) || (!sess.roleIsA && (st.get("claim") || st.get("lock")));
+    // B stopped BEFORE locking its XMR (e.g. every Monero node failed during
+    // the decoy build): the counterparty's XNO is in the joint with the refund
+    // secured, and simply re-running runB retries the lock (the gate re-verifies
+    // the market first). Manual only — committing XMR must be a click, not an
+    // auto-run on page load.
+    const bContinuable = !sess.roleIsA && st.get("open") && st.get("refund") && !st.get("lock") && !st.get("claim");
+    const canResume = (sess.roleIsA && (st.get("x") || aRecoverable)) || (!sess.roleIsA && (st.get("claim") || st.get("lock") || bContinuable));
     const row = document.createElement("div"); row.className = "hint"; row.style.margin = ".4rem 0";
     const amt = raw2(sess.deal.xnoRaw, 30) + " XNO ⇄ " + raw2(sess.deal.xmrAtomic, 12) + " XMR";
     row.textContent = new Date(sess.at).toLocaleString() + " · " + (sess.role === "maker" ? "your offer" : "you took an offer") + " · " + amt
@@ -4311,9 +4326,10 @@ function tpSessionsRender() {
       // already secured, or recovering our own coins from a counterparty refund.
       // A REFUND unwinds a swap that might still complete, so it is MANUAL only —
       // never auto-triggered on a page refresh (that was aborting live swaps).
-      if (!refundOnly) b.dataset.resume = "1";
+      if (!refundOnly && !bContinuable) b.dataset.resume = "1";   // continuing a lock commits XMR: manual click only
       b.textContent = refundOnly ? ("Refund now — get your " + raw2(sess.deal.xnoRaw, 30) + " XNO back")
                                  : sess.roleIsA ? "Resume — sweep my Monero"
+                                 : bContinuable ? "Resume — continue the swap (lock the XMR)"
                                  : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
       b.onclick = async () => {
         b.disabled = true;

@@ -421,12 +421,19 @@
         // PHASE 1 — build and sign EXACTLY ONCE. Failing over here is safe
         // because nothing has been broadcast yet.
         let signed = null, lastErr = "no Monero node answered";
-        for (let i = 0; i < nodes.length; i++) {
-          if (onProgress) onProgress(`building via ${host2(nodes[i])}: ${chosen.length} input${chosen.length > 1 ? "s" : ""} (from block ${pick.block}), CLSAG+BP+ with real decoys…`);
-          try { signed = await call("xmr_build", { node: nodes[i], inputs: chosen.map(o => ({ output: o.output, block: o.block })), dest, amount: amount.toString() }); break; }
-          catch (e) { lastErr = e && e.message || String(e); if (onProgress) onProgress(`xmr node ${host2(nodes[i])} failed: ${lastErr} → failover`); }
+        // TWO passes over the node list: public nodes fail transiently (timeouts,
+        // 502s) — one round of failover gave up exactly when a simple retry
+        // would have succeeded. A short pause between rounds lets a hiccup pass.
+        for (let round = 0; round < 2 && !signed; round++) {
+          if (round && onProgress) onProgress("all nodes failed once — waiting 5 s and retrying the build (nothing was broadcast; this is safe)…");
+          if (round) await new Promise((r) => setTimeout(r, 5000));
+          for (let i = 0; i < nodes.length && !signed; i++) {
+            if (onProgress) onProgress(`building via ${host2(nodes[i])}: ${chosen.length} input${chosen.length > 1 ? "s" : ""} (from block ${pick.block}), CLSAG+BP+ with real decoys…`);
+            try { signed = await call("xmr_build", { node: nodes[i], inputs: chosen.map(o => ({ output: o.output, block: o.block })), dest, amount: amount.toString() }); }
+            catch (e) { lastErr = e && e.message || String(e); if (onProgress) onProgress(`xmr node ${host2(nodes[i])} failed: ${lastErr} → failover`); }
+          }
         }
-        if (!signed) throw new Error(lastErr);
+        if (!signed) throw new Error("could not build the transaction on any Monero node after two rounds (" + lastErr + ") — nothing was broadcast; your funds are untouched. Retry from Unfinished swaps, or add a Monero node in Settings.");
 
         // PHASE 2 — mark the input spent BEFORE broadcasting. If we crash
         // between relay and write, the alternative is re-spending a key image

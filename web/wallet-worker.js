@@ -44,13 +44,22 @@ async function xmrIdentity() {
   return JSON.parse(x.xmr_personal(hexToBytes(seedHex), xmrNet));
 }
 // A fetch-backed transport for the wasm Monero daemon client (worker has fetch).
+function xmrRouteTimeout(route) {
+  // get_output_distribution.bin (decoy selection) returns a large payload public
+  // nodes are slow to serve — a flat 12 s timeout made ALL nodes "fail" and the
+  // whole lock build die (observed: 2 timeouts + a gateway 502). Give the heavy
+  // routes the time they actually need; keep the default snappy.
+  if (/get_output_distribution/.test(route)) return 90000;
+  if (/get_blocks/.test(route)) return 45000;
+  return 12000;
+}
 function xmrPost(node) {
   const base = String(node).replace(/\/+$/, "");
   return async (route, body) => {
     const isJson = body.length && (body[0] === 0x7b || body[0] === 0x5b);
     // Time out a stalled node instead of deadlocking the worker forever.
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
+    const t = setTimeout(() => ctrl.abort(), xmrRouteTimeout(route));
     try {
       const r = await fetch(base + "/" + route, {
         method: "POST", body, signal: ctrl.signal,

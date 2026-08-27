@@ -25,6 +25,15 @@ function fmtXmr(a) { const r = BigInt(a); const w = r / (10n ** 12n); const f = 
 function parseXmr(s) { const m = String(s).trim().match(/^(\d+)(?:\.(\d+))?$/); if (!m) throw new Error("enter a number"); return BigInt(m[1]) * (10n ** 12n) + BigInt((m[2] || "").padEnd(12, "0").slice(0, 12) || "0"); }
 
 // A fetch transport for the wasm Monero client, failing over across nodes.
+function xmrRouteTimeout(route) {
+  // get_output_distribution.bin (decoy selection) returns a large payload public
+  // nodes are slow to serve — a flat 12 s timeout made ALL nodes "fail" and the
+  // whole lock build die (observed: 2 timeouts + a gateway 502). Give the heavy
+  // routes the time they actually need; keep the default snappy.
+  if (/get_output_distribution/.test(route)) return 90000;
+  if (/get_blocks/.test(route)) return 45000;
+  return 12000;
+}
 function moneroPostFor(nodes) {
   const list = nodes.map((u) => String(u).replace(/\/+$/, "")).filter(Boolean);
   // Rotate the starting node per request — a lagging (stale-tip) node that still
@@ -35,7 +44,7 @@ function moneroPostFor(nodes) {
     let lastErr = "no Monero node answered";
     const order = list.map((_, i) => list[(rr + i) % list.length]); rr = (rr + 1) % Math.max(1, list.length);
     for (const url of order) {
-      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), xmrRouteTimeout(route));
       try {
         const r = await fetch(url + "/" + route, { method: "POST", body, signal: ctrl.signal, headers: { "content-type": j ? "application/json" : "application/octet-stream" } });
         if (!r.ok) { lastErr = "HTTP " + r.status; continue; }
