@@ -67,16 +67,39 @@
         catch (e) { if (!/disagree|failed/i.test(String(e.message)) || a === 5) throw e; await new Promise(r => setTimeout(r, 4000)); }
       }
       let prev = st.frontier, bal = BigInt(st.balance);
-      for (let idx = 0; idx < total; idx++) {
+      // Broadcast chunk by chunk, but survive a STALE-STATE rejection: right
+      // after the identity was topped up / pocketed, a lagging node can reject
+      // a send with "Invalid block balance for given subtype" (or fork/gap)
+      // because our frontier+balance snapshot predates its view. On such a
+      // rejection, re-read fresh state and rebuild the SAME chunk on it —
+      // already-accepted chunks are on-chain sends the receiver reassembles by
+      // header index, so order and frontier changes are harmless.
+      let idx = 0, refreshes = 0;
+      while (idx < total) {
         const chunk = new Uint8Array(32);
         chunk.set(blob.subarray(idx * 32, idx * 32 + 32));
         const amount = BigInt(packHeader(seq, idx, total, blob.length));
-        bal = bal - amount;
-        if (bal < 0n) throw new Error("identity balance too low to post");
-        const signed = wasm.sign_state_block(seed, prev, hex(chunk), bal.toString(), mbHex, "send");
+        const nb = bal - amount;
+        if (nb < 0n) throw new Error("identity balance too low to post");
+        const signed = wasm.sign_state_block(seed, prev, hex(chunk), nb.toString(), mbHex, "send");
         if (!signed) throw new Error("could not sign chunk " + idx);
         const work = await I.generateWork(urls, JSON.parse(signed).work_root, beacon.THRESH.send, null);
-        prev = await I.processBlock(urls, signed, work);
+        try {
+          prev = await I.processBlock(urls, signed, work);
+          bal = nb; idx++;
+        } catch (e) {
+          const msg = String(e && e.message || e);
+          if (refreshes < 3 && /invalid block balance|fork|gap|old block|previous/i.test(msg)) {
+            refreshes++;
+            await new Promise((r) => setTimeout(r, 3000));
+            let st2 = null;
+            for (let a = 0; a < 4 && !st2; a++) { try { st2 = await I.pocketAll(urls, seed); } catch (e2) { await new Promise((r) => setTimeout(r, 3000)); } }
+            if (!st2) throw e;
+            prev = st2.frontier; bal = BigInt(st2.balance);
+            continue;   // rebuild the same chunk on the fresh state
+          }
+          throw e;
+        }
       }
       return true;
     }
