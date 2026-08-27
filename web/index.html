@@ -669,8 +669,8 @@
           <div class="glab" style="margin-top:1.2rem">Certified win, or no action</div>
           <div class="sub" style="margin-top:.3rem">Every offer, every accepted take, and every irreversible step is checked to be profitable at the live market — after fees, with active volatility monitoring and an unrealised-loss limit — or it is refused. It never acts on an unverified or fast-moving price.</div>
 
-          <div class="glab" style="margin-top:1.2rem">Settlement stays supervised for now</div>
-          <div class="sub" style="margin-top:.3rem">Hermes can also settle a swap end-to-end autonomously, but that path is <b>off by default and unproven</b>: settlement takes 25–40 minutes on Monero confirmations, and a process that dies partway must resume to recover. Until a swap has completed on-chain between two parties under supervision, Hermes hands each certified take to a human to settle from this page. Automate the watching and the pricing; keep a person on the money.</div>
+          <div class="glab" style="margin-top:1.2rem">Settlement is autonomous, end to end</div>
+          <div class="sub" style="margin-top:.3rem">Hermes settles each certified take itself — <b>on by default</b>: it runs the full 25–40 minute settlement (Monero confirmations included), and if the process dies partway it auto-resumes on the next tick, completing, refunding, or recovering. Every irreversible step is still certified against the live market, so a losing or fast-moving deal aborts safely. Prefer a person on the money? Set <span class="mono">XNOXMR_AUTOSETTLE=0</span> and certified takes are handed to a human instead.</div>
 
           <div class="glab" style="margin-top:1.2rem">Run it fully self-hosted (local proof-of-work &amp; nodes)</div>
           <div class="sub" style="margin-top:.3rem">By default Hermes uses this site's proof-of-work helper and public RPC nodes. For full independence — no third party in the loop — point it at your own:</div>

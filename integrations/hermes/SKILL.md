@@ -127,7 +127,8 @@ Each tick:
 1. **health** — no trustworthy price ⇒ withdraw whatever is resting. Nothing
    may sit on the book unverified.
 2. **peek** — read every take-request on the resting offer **without replying**.
-   A certified take ⇒ `verdict: HANDOFF` (report it, keep the offer). A take
+   A certified take is **settled autonomously** (`SETTLING` → `SETTLED`); with
+   `XNOXMR_AUTOSETTLE=0` it becomes a `HANDOFF` report instead. A take
    that is not a win ⇒ post a typed **decline** so the taker stops waiting in
    seconds instead of ten minutes.
 3. **status** — re-certify the resting offer at the current market:
@@ -139,9 +140,10 @@ State lives in `.xnoxmr-agent.json` (git-ignored) so ticks are stateless
 processes; a lock file stops two ticks overlapping. Without `--live` every tick
 is a dry run that says what it *would* do.
 
-**On `HANDOFF`, deliver the report to the human immediately** — that is the
-whole point of the loop. Include `block`, `slot`, the deal, and the certificate.
-Keep ticking; the offer is deliberately held for them.
+**On `SETTLED`, report the realised result.** A `HANDOFF` verdict only occurs
+when autosettle is disabled (`XNOXMR_AUTOSETTLE=0`) — then deliver the report
+to the human immediately (include `block`, `slot`, the deal, the certificate)
+and keep ticking; the offer is deliberately held for them.
 
 ## Incoming funds are not automatic — pocket them (`receive`)
 

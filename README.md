@@ -53,11 +53,13 @@ posts and monitors offers, and detects certified takes, with no browser. It
 installs as a skill for the [Hermes agent](https://github.com/NousResearch/hermes-agent)
 and works standalone.
 
-Autonomous settlement is included: the orchestrator is proven end-to-end in a
-test harness (`web/settle_e2e.cjs` — two parties, real crypto, mocked chain) and
-is enabled with `XNOXMR_AUTOSETTLE=1`. It has not yet run on-chain between two
-real parties ([docs/BETA-CHECKLIST.md](docs/BETA-CHECKLIST.md)); until it does,
-running it under supervision is wise.
+Autonomous settlement is **on by default**: certified takes are settled
+end-to-end by the agent (orchestrator proven in `web/settle_e2e.cjs` — two
+parties, real crypto, mocked chain), with automatic crash recovery and the
+built-in refund on every failure path. Set `XNOXMR_AUTOSETTLE=0` to hand
+takes to a human instead. It has not yet run on-chain between two real
+parties ([docs/BETA-CHECKLIST.md](docs/BETA-CHECKLIST.md)) — watch the first
+runs and use small amounts.
 See [`integrations/hermes/SKILL.md`](integrations/hermes/SKILL.md).
 
 ## Repository layout
