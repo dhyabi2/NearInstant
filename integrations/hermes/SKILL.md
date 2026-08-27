@@ -293,6 +293,28 @@ offers. At a 30–60 bps spread a *filled* small swap earns only cents.
 If asked about revenue, say the bottleneck is demand, not autonomy. If asked
 about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 
+## Recovering a stuck settlement (operator)
+
+A settlement holds the offer while it runs. If one gets stuck, two commands
+(both work with autosettle on or off):
+
+```bash
+# list in-flight sessions with their on-chain-fund markers
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs settle --list
+
+# drop a session that never moved funds (setup/ceremony only)
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs settle --abandon <session>
+```
+
+`--abandon` **refuses** if any fund marker (`open/fund/lock/lockseen/refund/x/
+claim/sweep`) is present — a session that moved funds must be RESUMED, not
+dropped; `tick --live` auto-resumes it to complete, refund, or recover. You
+rarely need `--abandon`: a taker that vanishes during setup is now abandoned
+automatically once the funding wait (`XNOXMR_FUND_WAIT_MS`, default 300 s)
+elapses, and the offer stays live for the next taker. A stale `.lock` from a
+killed tick is also cleared automatically on the next tick (the holder PID is
+liveness-checked), so a crash no longer blocks the loop.
+
 ## Environment
 
 | Var | Default |
@@ -307,6 +329,7 @@ about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 | `XNOXMR_TICK_MS` | `watch` fallback tick interval, ms (default 180000) |
 | `XNOXMR_TICK_TIMEOUT_MS` | `watch` stuck-tick guard release, ms (default 900000) |
 | `XNOXMR_NANO_RPC_KEY` | nano.to API key — sent to rpc.nano.to (header + body) and ws.nano.to (`?key=`) |
+| `XNOXMR_FUND_WAIT_MS` | how long a settlement waits for the taker's XNO before abandoning cleanly (default 300000; min 30000) |
 
 ## Running more than one agent on the same machine
 
