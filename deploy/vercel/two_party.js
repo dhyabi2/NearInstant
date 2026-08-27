@@ -732,7 +732,7 @@
       const onMoved = async (mv) => {
         if (mv.link === String(party.myWalletAcct || "").toLowerCase()) {
           S.set("claim", { hash: mv.hash });
-          try { await deps.walletApi.receive(); } catch (e) {}
+          try { await pocketIncoming(deps); } catch (e) {}
           return "claimed";
         }
         deps.note("the counterparty refunded — recovering your locked XMR…");
@@ -778,7 +778,7 @@
       deps.note("broadcasting the claim (reveals x)…");
       const hash = await I.processBlock(deps.urls, built.signedJson, work);
       S.set("claim", { hash: String(hash) });
-      try { await deps.walletApi.receive(); } catch (e) {}   // pocket the received XNO
+      try { await pocketIncoming(deps); } catch (e) {}   // pocket the received XNO
     }
     // What actually happened, from the chain, not from the deal terms: the XNO
     // that landed in the joint account is `open.balance` (on-chain), and B paid
@@ -891,7 +891,7 @@
             // the frontier is OUR refund (an earlier timeout attempt landed)
             S.set("refunded", { hash: info.frontier, reason: "claim timeout" });
             deps.note("refunded — your XNO is back.");
-            try { await deps.walletApi.receive(); } catch (e) {}
+            try { await pocketIncoming(deps); } catch (e) {}
             return { done: true, refunded: true, reason: "claim timeout" };
           }
           if (blk && blk.contents && blk.contents.signature) { claimSig = String(blk.contents.signature); break; }
@@ -967,6 +967,22 @@
 
   // A: turn the refund pre-signature into a broadcastable block by completing it
   // with A_xmr. Doing so publishes A_xmr, which is what lets B recover its XMR.
+  // Pocket XNO that just arrived (a refund or a claim sent to our wallet) WITHOUT
+  // waiting for a manual "Receive". The send we (or the counterparty) just
+  // broadcast needs a few seconds to propagate before it shows as receivable, so
+  // poll+receive for a short window rather than trying once and leaving it
+  // pending. Best-effort and bounded; the wallet's own auto-receive/next refresh
+  // is the backstop.
+  async function pocketIncoming(deps) {
+    if (!(deps.walletApi && deps.walletApi.receive)) return;
+    for (let i = 0; i < 10; i++) {
+      let r = null;
+      try { r = await deps.walletApi.receive(); } catch (e) {}
+      try { if (r && BigInt(r.pocketed || 0) > 0n) { if (deps.note) deps.note("received your XNO into your wallet \u2713"); return; } } catch (e) {}
+      await new Promise((res) => setTimeout(res, 4000));
+    }
+  }
+
   async function broadcastRefund(deps, party, openHash, refund) {
     if (!party.roleIsA) throw new Error("only the XNO funder can take the refund");
     const acctHex = party.jointNanoAccount;
@@ -978,7 +994,7 @@
     const work = await I.generateWork(deps.urls, built.workRoot, deps.beacon.THRESH.send, null);
     deps.note("broadcasting the refund (publishes your Monero share so the other side can recover)…");
     const hash = await I.processBlock(deps.urls, built.signedJson, work);
-    try { await deps.walletApi.receive(); } catch (e) {}
+    try { await pocketIncoming(deps); } catch (e) {}
     return { hash: String(hash) };
   }
 
