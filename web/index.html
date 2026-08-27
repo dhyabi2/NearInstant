@@ -1036,7 +1036,7 @@ $("earnAmount").addEventListener("input", earnRender);
 // Live funds chips: mirror the wallet balances (active coin bright, other dim).
 // ONE balance record. The wallet refreshers write it; the funds strip, the
 // machine, the Earned panel and Smart Offer all read it (no DOM scraping).
-const walletBal = { xno: null, xmr: null };   // numbers, null = not read yet
+const walletBal = { xno: null, xmr: null, xmrTotal: null };   // numbers, null = not read yet (xmr = spendable, xmrTotal incl. confirming)
 function walletBalClear() { walletBal.xno = null; walletBal.xmr = null; }
 function updateEarnFunds() {
   // walletApi is declared later in the script; referencing it during the first
@@ -2038,6 +2038,7 @@ async function xmrAutoTick() {
       if (el && !el.dataset.manual) el.textContent = xmrHuman(m);
     }, { maxChunks: 8 });
     walletBal.xmr = parseFloat(b.spendable) || 0;
+    walletBal.xmrTotal = parseFloat(b.total) || 0;
     $("wXmrBal").textContent = xmrBalDisplay(b);
     updateEarnFunds();
     const want = b.caughtUp ? XMR_AUTO_IDLE_MS : XMR_AUTO_BEHIND_MS;
@@ -2067,6 +2068,7 @@ async function walletXmrRefresh() {
   try {
     const b = await walletApi.xmrRefresh(m => $("wXmrStage").textContent = xmrHuman(m));
     walletBal.xmr = parseFloat(b.spendable) || 0;
+    walletBal.xmrTotal = parseFloat(b.total) || 0;
     $("wXmrBal").textContent = xmrBalDisplay(b);
     updateEarnFunds();
     $("wXmrStage").textContent = xmrStatusLine(b);
@@ -2084,6 +2086,7 @@ $("wXmrRescan").onclick = async () => {
   try {
     const b = await walletApi.xmrRescanFrom(h, m => $("wXmrStage").textContent = xmrHuman(m));
     walletBal.xmr = parseFloat(b.spendable) || 0;
+    walletBal.xmrTotal = parseFloat(b.total) || 0;
     $("wXmrBal").textContent = xmrBalDisplay(b);
     updateEarnFunds();
     $("wXmrStage").textContent = "Rescan complete. " + xmrStatusLine(b);
@@ -4039,7 +4042,21 @@ function tpShowDeposit(coin, needAmt, haveAmt) {
       if (done) return;
       try {
         let have;
-        if (isXmr) have = parseFloat(walletBal.xmr || 0);
+        if (isXmr) {
+          // Keep the background Monero scan on its FAST cadence while this panel
+          // is open — once caught up it drops to a 3-min idle, which can delay
+          // first sight of a fresh deposit by minutes.
+          try { if (typeof xmrAutoTimer !== "undefined" && xmrAutoTimer && xmrAutoTimer.__ms !== XMR_AUTO_BEHIND_MS) xmrAutoSchedule(XMR_AUTO_BEHIND_MS); } catch (e) {}
+          have = parseFloat(walletBal.xmr || 0);
+          // A deposit is SEEN long before it is SPENDABLE (10 confirmations,
+          // ~20 min). Detect on TOTAL so the user knows it arrived, resolve on
+          // spendable so the swap only proceeds with usable funds.
+          const totalNow = parseFloat(walletBal.xmrTotal || 0);
+          if (have < needAmt - 1e-6 && totalNow >= needAmt - 1e-6) {
+            $("tpDepStatus").textContent = "✓ Deposit arrived — " + totalNow.toFixed(fd) + " XMR seen on-chain. Monero needs ~10 confirmations (~20 min) before it is spendable; this continues automatically.";
+            return;
+          }
+        }
         else { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); }
         // Compare with a one-quantum tolerance: needAmt is a float carrying a
         // buffer (+0.01 XNO / +0.001 XMR) and rounding error, while the deposit
@@ -4050,7 +4067,7 @@ function tpShowDeposit(coin, needAmt, haveAmt) {
         if (have >= needAmt - EPS) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(fd) + " " + unit + " spendable. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
         else if (have > 0) { $("tpDepStatus").textContent = "● " + have.toFixed(fd) + " " + unit + " so far — need " + needAmt.toFixed(dp) + (isXmr ? " (confirming…)" : "") + ". Waiting…"; }
       } catch (e) {}
-    }, isXmr ? 6000 : 3000);
+    }, isXmr ? 6000 : 8000);   // XNO poll is a quorum read (multi-node) — the websocket detects instantly, this is only a backstop
   });
 }
 function tpBtnSync() {
