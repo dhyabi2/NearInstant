@@ -285,6 +285,12 @@
   .pgrow input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:ui-monospace,monospace;font-weight:800;font-size:1.05rem;padding:0;color:var(--ink)}
   .pgrow .pgcoin{flex:0 0 auto;font-weight:850;font-size:.82rem;letter-spacing:.02em}
   .pgarrow{text-align:center;font-weight:900;font-size:1.05rem;color:var(--burnt);line-height:.5;margin:-.05rem 0}
+  .pgrow.err{border-color:#c0392b}
+  .pgrow.err input{color:#c0392b}
+  .pgrow input::placeholder{color:#b6b6b6;font-weight:700}
+  .pgrow.err input::placeholder{color:#c0392b}
+  .amt-min{display:none;font-size:.74rem;font-weight:800;color:#c0392b;margin-top:.3rem;cursor:pointer;text-decoration:underline}
+  .amt-min.show{display:block}
   /* swap-direction: two BIG monochrome radio cards — the selected one is unmissable */
   .swside{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;width:100%}
   .swside button{display:flex;align-items:center;gap:.75rem;padding:.95rem 1rem;border:2px solid var(--ink);
@@ -554,6 +560,7 @@
               <div class="pgarrow" id="tpArrow">↓</div>
               <div class="pgrow"><span class="pglbl">You get</span><input id="tpGet" inputmode="decimal" placeholder="0.00" autocomplete="off"><span class="pgcoin" id="tpGetCoin">XNO</span></div>
             </div>
+            <div class="amt-min" id="tpMinHint"></div>
             <div class="add" style="margin-top:.4rem">
               <input id="tpDest" placeholder="your Monero address to receive at (4… / 8…)" autocomplete="off" spellcheck="false">
             </div>
@@ -3928,9 +3935,36 @@ function tpBtnSync() {
   btn.textContent = label;
   btn.classList.toggle("btn-need", need);
 }
+// The minimum viable fill, expressed in the coin the taker TYPES (the sold
+// coin), slightly rounded UP so entering exactly it passes the gate.
+function tpMinSell() {
+  try {
+    const TP = window.XnoxmrTwoParty;
+    if (!TP || !swSelected || !swLastMid) return null;
+    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swLastMid, null, CERT.MIN_ACCEPT_BPS);
+    if (!minRaw) return null;
+    const minXno = Number(BigInt(minRaw) / (10n ** 24n)) / 1e6;
+    if (swSide === "xno") return { amt: Math.ceil(minXno * 100) / 100, coin: "XNO" };
+    const price = Number(swSelected.intent.price_e9) / 1e9;
+    return { amt: Math.ceil(minXno * price * 1e6) / 1e6, coin: "XMR" };
+  } catch (e) { return null; }
+}
+function tpAmtErr(on, mn) {
+  const row = $("tpAmount") && $("tpAmount").closest(".pgrow"), hint = $("tpMinHint");
+  if (row) row.classList.toggle("err", !!on);
+  if (!hint) return;
+  hint.classList.toggle("show", !!(on && mn));
+  if (on && mn) {
+    hint.textContent = "Minimum " + mn.amt + " " + mn.coin + " — tap to use it";
+    hint.onclick = () => { $("tpAmount").value = String(mn.amt); tpSync("pay"); tpQuoteRender(); };
+  }
+}
 function tpQuoteRender() {
   const q = $("tpQuote"); if (!q) return;
-  $("tpAmount").placeholder = swSide === "xmr" ? "amount of XMR to sell" : "amount of XNO to sell";
+  const mn = tpMinSell();
+  $("tpAmount").placeholder = mn ? ("min " + mn.amt + " " + mn.coin)
+    : (swSide === "xmr" ? "amount of XMR to sell" : "amount of XNO to sell");
+  tpAmtErr(false);
   { const i = tpDestInfo(); if ($("tpDest")) $("tpDest").placeholder = i.ph;
     if ($("tpDestNote")) $("tpDestNote").textContent = "Your " + i.coin + " is sent straight to this external address — it never stays in this page's wallet."; }
   tpCoinLabels();
@@ -3939,7 +3973,11 @@ function tpQuoteRender() {
   if (!swSelected) { q.textContent = "Pick a live offer above to get a quote."; return; }
   const d = tpDealFromInput();
   if (!d) { q.textContent = "Enter how much " + (swSide === "xmr" ? "XMR" : "XNO") + " you want to sell."; return; }
-  if (d.tooSmall) { q.textContent = "Too small for the maker to fill profitably — the Monero network fee alone would put them at a loss, so they will decline. Use at least " + d.minXno.toFixed(2) + " XNO."; return; }
+  if (d.tooSmall) {
+    tpAmtErr(true, mn);
+    q.textContent = "Too small for the maker to fill profitably — the Monero network fee alone would put them at a loss, so they will decline." + (mn ? " Minimum " + mn.amt + " " + mn.coin + "." : " Use at least " + d.minXno.toFixed(2) + " XNO.");
+    return;
+  }
   if (d.unviable) { q.textContent = "This offer is not fillable at any size at the current market — the maker's price is no longer a win for them. Pick another offer."; return; }
   if (d.tooBig) { q.textContent = "That is more than this offer can take — pick a smaller amount or another offer."; return; }
   const pay = swSide === "xmr" ? raw2(d.xmrAtomic, 12) + " XMR" : raw2(d.xnoRaw, 30) + " XNO";
