@@ -20,6 +20,21 @@ OUT="dist"
 mkdir -p "$OUT"
 cp "$SRC" "$OUT/swap.html"
 
+# Cache-bust the lazy-loaded assets. index.html requests them as `<file>?v=$ASSET_V`;
+# if ASSET_V never changes, a browser serves a STALE cached copy after a deploy
+# even though swap.html itself is content-addressed (the bug that hid new
+# two_party.js/wasm from users). Derive ASSET_V from the actual asset bytes so it
+# changes iff an asset changes — same input, same version (reproducible).
+ASSETS="web/two_party.js web/mailbox.js web/beacon.js web/ledger_relay.js \
+  web/wallet.js web/wallet-worker.js web/swap_machine.js web/swap_responder.js \
+  web/swap_driver.js web/custody.js web/custody_core.js web/custody-worker.js \
+  web/funded_swap.js web/pkg/wasm_bridge_bg.wasm web/pkg-xmr/wasm_monero_bg.wasm"
+ASSET_V=$(cat $ASSETS 2>/dev/null | shasum -a 256 | cut -c1-12)
+# Replace the placeholder ASSET_V in the bundled copy (source keeps its literal).
+sed -i.bak "s/const ASSET_V = \"[^\"]*\";/const ASSET_V = \"$ASSET_V\";/" "$OUT/swap.html"
+rm -f "$OUT/swap.html.bak"
+echo "asset version: $ASSET_V"
+
 SHA=$(shasum -a 256 "$OUT/swap.html" | awk '{print $1}')
 
 # CIDv1, raw codec, sha2-256: multibase-base32( 0x01 0x55 0x12 0x20 <digest> ).
