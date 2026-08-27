@@ -1429,7 +1429,7 @@ async function smartStart(resumeCoin) {
   const btn = $("smartBtn");
   if (smartState && smartState.running) return;
   let addrMain = null; try { addrMain = walletApi && walletApi.address(); } catch (e) {}
-  if (!addrMain) { $("smartNote").textContent = "Unlock your wallet first — Smart Offer needs to know which coin you hold."; appView("wallet"); return; }
+  if (!addrMain) { $("smartNote").textContent = "Unlock your wallet first — Smart Offer needs to know which coin you hold."; appReturnView = "earn"; appView("wallet"); return; }
   btn.disabled = true; $("smartNote").textContent = "Starting the offering engine…";
   try { await expInit(); await tpEnsure(); } catch (e) {}
   if (!expBeacon || !expWasm || !window.XnoxmrTwoParty) { btn.disabled = false; $("smartNote").textContent = "Could not load the offering engine. Please try again."; return; }
@@ -1754,6 +1754,7 @@ showHook(0); restartSlider();
 
 // One box, three views, Earn / Swap / Wallet. The top-bar modes and the app
 // tabs both drive the same switch; the machine + funds strip stay put.
+let appReturnView = null;   // view to return to after an unlock-bounce to Wallet
 function appView(v) {
   ["earn", "swap", "wallet", "agent", "faq", "settings"].forEach(k => { const el = $("view" + k[0].toUpperCase() + k.slice(1)); if (el) el.classList.toggle("hidden", k !== v); });
   $("appTabs").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === v));
@@ -1901,6 +1902,13 @@ async function walletRefresh(receiveFirst) {
 async function walletAfterOpen() {
   walletShell();
   if (typeof tpBtnSync === "function") tpBtnSync();   // wallet now open → refresh the swap action button
+  // Return the user to where the unlock-bounce came from (Swap/Earn) — being
+  // sent to Wallet to unlock must not lose their place mid-flow.
+  if (appReturnView) {
+    const v = appReturnView; appReturnView = null;
+    appView(v);
+    if (v === "swap") { try { tpBtnSync(); const a = $("tpAmount"); if (a) a.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }
+  }
   try { walletApi.liveReceive(() => walletRefresh(false)); } catch (e) {}
   // Show the Monero address for this wallet (same seed).
   try {
@@ -3942,7 +3950,7 @@ function tpQuoteRender() {
 $("tpAmount").addEventListener("input", () => { tpSync("pay"); tpQuoteRender(); });
 if ($("tpGet")) $("tpGet").addEventListener("input", () => { tpSync("get"); tpQuoteRender(); });
 if ($("tpTake")) $("tpTake").onclick = async () => {
-  if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first."); appView("wallet"); return; }
+  if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first — you'll be brought straight back here."); appReturnView = "swap"; appView("wallet"); return; }
   if (!swSelected) { tpLog("Pick a live offer above first."); return; }
   const d = tpDealFromInput();
   if (!d || d.tooBig || d.tooSmall || d.unviable) {
@@ -4019,7 +4027,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
 if ($("tpDest")) $("tpDest").addEventListener("input", () => { tpResetReview(); tpBtnSync(); });
 if ($("tpWait")) $("tpWait").onclick = async () => {
   try {
-    if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first."); appView("wallet"); return; }
+    if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first — you'll be brought straight back here."); appReturnView = "swap"; appView("wallet"); return; }
     $("tpWait").disabled = true; tpLog("loading engine…"); await tpEnsure();
     const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
     // The maker waits on ITS live offer for the coin it is selling (swSide).
