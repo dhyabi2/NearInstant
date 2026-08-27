@@ -328,6 +328,7 @@
     // a retry, never move funds.
     if (rj.decline) { const e = new Error("maker declined: " + String(rj.decline).slice(0, 200)); e.declined = true; throw e; }
     if (!rj.pub) throw new Error("maker reply was malformed");
+    let instant = null, agreedMidE9 = null;   // function-scoped: the return below uses them (declaring them inside the verify block broke every browser take: "instant is not defined")
     // AUTHENTICATE the reply against the account that posted the offer. Without
     // this, a party that squats the response slot could hand the taker ITS OWN
     // ECDH pub and man-in-the-middle the whole ceremony. The maker signs
@@ -341,14 +342,12 @@
       // Monero confirmations instead of 10 — the MAKER carries the reorg risk
       // beyond that depth (priced into its spread); the taker only gains. The
       // count must be sane and is bound INTO the auth signature (v2).
-      let instant = null;
       if (rj.instant && Number.isInteger(rj.instant.confs) && rj.instant.confs >= 1 && rj.instant.confs <= 9) instant = { confs: rj.instant.confs };
       else if (rj.instant) { throw new Error("maker sent a malformed instant tier — rejecting the accept"); }
       // AGREED MID: the maker may attest its accept-time mid (mid*1e9). Both
       // sides then measure drift against the SAME number, so their independent
       // oracles can never disagree the swap to death. Bound into the signature
       // (v3); the CALLER must still sanity-band it against its own oracle.
-      let agreedMidE9 = null;
       if (rj.mid != null) {
         if (!Number.isInteger(rj.mid) || rj.mid < 100 || rj.mid > 1e12) throw new Error("maker sent a malformed price reference — rejecting the accept");
         agreedMidE9 = rj.mid;
@@ -1196,7 +1195,28 @@
 
   // B: the counterparty took the refund instead of completing the swap. Extract
   // A_xmr from the on-chain refund signature and sweep the locked XMR back.
+  // Where is our lock, exactly? We PERSIST the lock tx hash at broadcast time —
+  // so instead of view-key-scanning thousands of blocks, ask the daemon for the
+  // transaction directly (get_transactions → block_height, O(1)) and scan only
+  // the handful of blocks around it. Trustless: the height is only a POINTER —
+  // ownership is still established by our own view-key scan of that block.
+  async function xmrTxHeight(deps, txHash) {
+    try {
+      const body = new TextEncoder().encode(JSON.stringify({ txs_hashes: [String(txHash)], decode_as_json: false }));
+      const raw = await deps.moneroPost("get_transactions", body);
+      const j = JSON.parse(new TextDecoder().decode(raw));
+      const t = j && j.txs && j.txs[0];
+      const h = t && (t.block_height || t.block_height === 0 ? t.block_height : null);
+      return Number.isFinite(h) && h > 0 ? h : null;
+    } catch (e) { return null; }
+  }
+
   async function recoverXmrFromRefund(deps, party, refund, refundSigHex) {
+    // Nothing was ever locked (e.g. the lock step was SKIPPED because the joint
+    // account had already moved) — there is nothing on-chain to recover, and a
+    // blind multi-thousand-block hunt for a nonexistent output ran forever.
+    const lk = deps.store ? deps.store.get("lock") : null;
+    if (lk && lk.skipped) { deps.note("nothing was ever locked on this session — nothing to recover; closing it out."); return { none: true }; }
     const aShare = deps.wasm.presig_extract(hb(refund.presig), hb(refundSigHex));
     // Order-independent: (my share, their share) yields the same joint secret.
     const jointSecret = deps.xmr.xmr_joint_secret(party.ctx, party.myXmrShare, aShare);
@@ -1208,9 +1228,17 @@
     //    window only if it is somehow absent.
     //  - NEVER gate on profitability: we are sweeping OUR OWN coins back, so
     //    market movement is irrelevant. price:null disables the wait's gate.
-    const lockH = (deps.store && (deps.store.get("lock") || {}).h) || 0;
+    let lockH = (lk && lk.h) || 0;
+    // O(1) pointer: the persisted lock tx hash → exact block height from the
+    // daemon, so the scan below covers ~10 blocks instead of thousands.
+    const txh = lk && lk.tx && (lk.tx.tx_hash || (typeof lk.tx === "string" ? lk.tx : null));
+    if (txh) { const h = await xmrTxHeight(deps, txh); if (h) { lockH = h; deps.note("lock transaction located at block " + h.toLocaleString() + " (direct daemon lookup — no long scan)"); } }
     const rdeps = Object.assign({}, deps, { price: null });
-    const { hit } = await waitJointXmrLock(rdeps, party, party.deal.xmrAtomic, lockH, undefined, 5000);
+    // Bounded: if the (possibly blind) hunt finds nothing in 10 minutes, the
+    // lock is not on-chain — conclude instead of rescanning forever.
+    const res = await waitJointXmrLock(rdeps, party, party.deal.xmrAtomic, lockH, Date.now() + 10 * 60 * 1000, 5000);
+    if (!res) { deps.note("no matching lock exists on-chain for this session — nothing to recover; closing it out."); return { none: true }; }
+    const { hit } = res;
     const node = await deps.xmr.XmrNode.connect(deps.moneroPost);
     const myXmr = await deps.walletApi.xmrAddress();
     deps.note("recovering your locked XMR (the other side refunded and revealed their share)…");
