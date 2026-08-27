@@ -1279,6 +1279,15 @@ async function priceCoingecko() {
   if (!(xno > 0) || !(xmr > 0)) throw new Error("bad coingecko");
   return { ratio: xno / xmr, xnoUsd: xno, xmrUsd: xmr };   // XMR per 1 XNO + USD legs
 }
+async function priceCoincap() {
+  const [a, b] = await Promise.all([
+    fetchJson("https://api.coincap.io/v2/assets/nano"),
+    fetchJson("https://api.coincap.io/v2/assets/monero"),
+  ]);
+  const xno = parseFloat(a && a.data && a.data.priceUsd), xmr = parseFloat(b && b.data && b.data.priceUsd);
+  if (!(xno > 0) || !(xmr > 0)) throw new Error("bad coincap");
+  return { ratio: xno / xmr, xnoUsd: xno, xmrUsd: xmr };
+}
 async function priceCoinpaprika() {
   const [a, b] = await Promise.all([
     fetchJson("https://api.coinpaprika.com/v1/tickers/nano-nano"),
@@ -1377,7 +1386,7 @@ async function marketPrice() {
 }
 async function marketPriceUncached() {
   const got = [], xnoUsds = [], xmrUsds = [];
-  for (const f of [priceCoingecko, priceCoinpaprika]) {
+  for (const f of [priceCoingecko, priceCoinpaprika, priceCoincap]) {
     try {
       const r = await f(); const p = r.ratio;
       if (p > SMART.SANE_MIN && p < SMART.SANE_MAX) {

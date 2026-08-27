@@ -82,21 +82,31 @@ async function marketPriceOnce() {
       fetchJson("https://api.coinpaprika.com/v1/tickers/nano-nano"),
       fetchJson("https://api.coinpaprika.com/v1/tickers/xmr-monero")]);
     const p = a.quotes.USD.price / b.quotes.USD.price; if (p > SANE_MIN && p < SANE_MAX) got.push(p); } catch (e) {}
+  try { const [a, b] = await Promise.all([
+      fetchJson("https://api.coincap.io/v2/assets/nano"),
+      fetchJson("https://api.coincap.io/v2/assets/monero")]);
+    const p = parseFloat(a.data.priceUsd) / parseFloat(b.data.priceUsd); if (p > SANE_MIN && p < SANE_MAX) got.push(p); } catch (e) {}
   if (got.length < 2) return { ok: false, reason: "need >=2 price sources; holding to be safe" };
   const mean = got.reduce((s, x) => s + x, 0) / got.length;
   if ((Math.max(...got) - Math.min(...got)) / mean > AGREE_TOL)
     return { ok: false, reason: "price sources disagree, holding to be safe" };
-  return { ok: true, mid: mean, sources: got.length };
+  return { ok: true, mid: mean, sources: got.length, at: Date.now() };
 }
-// Transient oracle blips (one source timing out at startup) held the maker for
-// whole tick intervals. Retry with a short backoff before declaring no quote.
+// Transient oracle blips (one source timing out, a burst of ticks hitting a
+// rate limit) must not stall the maker or pull a live offer. Three layers:
+// a 45 s cache (a tick burst reuses one fetch), retry with backoff, and a
+// stale-but-≤60 s fallback — certify() still sees the TRUE fetch time via
+// `at`, so nothing older than its 60 s gate is ever acted on.
+let __midCache = null;   // { at, res }
 async function marketPrice() {
+  if (__midCache && Date.now() - __midCache.at < 45000) return __midCache.res;
   let last = null;
   for (const delay of [0, 3000, 8000]) {
     if (delay) await new Promise((r) => setTimeout(r, delay));
     last = await marketPriceOnce();
-    if (last.ok) return last;
+    if (last.ok) { __midCache = { at: Date.now(), res: last }; return last; }
   }
+  if (__midCache && Date.now() - __midCache.at < 60000) return Object.assign({}, __midCache.res, { stale: true });
   return last;
 }
 
@@ -396,7 +406,7 @@ CMDS.offer = async (args) => {
   // post. Same certify() the app runs.
   const hyp = { xnoRaw: sizeRaw.toString(), priceE9: String(intent.price_e9),
                 xmrAtomic: ((sizeRaw * BigInt(intent.price_e9) * 1000n) / (10n ** 30n)).toString() };
-  const cert = TP.certify(hyp, side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() }, { minBps: MIN_ACCEPT_BPS });
+  const cert = TP.certify(hyp, side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() }, { minBps: MIN_ACCEPT_BPS });
   if (!cert.ok) return die("refusing to post: offer is not a certified win", { certificate: cert });
   const block = await beacon.publish(NANO_NODES, seed, PAIR, intent, () => {});
   { const st = stLoad(); st.offer = { block: String(block).toLowerCase(), intent, side, sizeXno, mid: pr.mid, ask, bps, cert, at: Date.now() }; stSave(st); }
@@ -415,7 +425,7 @@ CMDS.verify = async (args) => {
   const xno = parseFloat(args.xno);
   if (side === null || !(xno > 0)) return die("usage: verify --side 0|1 --xno <amount> [--price_e9 <p>] [--min_bps n]");
   const pr = await marketPrice();
-  const price = pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() } : { ok: false, reason: pr.reason };
+  const price = pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() } : { ok: false, reason: pr.reason };
   let priceE9 = args.price_e9 ? parseInt(args.price_e9, 10) : null;
   if (!priceE9) {
     if (!pr.ok) return die(pr.reason, { hint: "fail-closed: no price, no quote, no verification" });
@@ -450,7 +460,7 @@ async function offerStatus() {
   if (!pr.ok) return Object.assign(r, { verdict: "WITHDRAW", reason: "no trustworthy price: " + pr.reason });
   const xnoRaw = BigInt(Math.round(o.sizeXno * 1e6)) * (10n ** 24n);
   const hyp = { xnoRaw: xnoRaw.toString(), priceE9: String(o.intent.price_e9), xmrAtomic: ((xnoRaw * BigInt(o.intent.price_e9) * 1000n) / (10n ** 30n)).toString() };
-  const cert = TP.certify(hyp, o.side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() }, { minBps: MIN_ACCEPT_BPS, baseline: o.cert, maxUnrealizedLossBps: 50 });
+  const cert = TP.certify(hyp, o.side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() }, { minBps: MIN_ACCEPT_BPS, baseline: o.cert, maxUnrealizedLossBps: 50 });
   const sigD = sigmaDaily(phPush(pr.mid)); const wantBps = quoteBps(sigD, 1);
   const drift = Math.abs(pr.mid - o.mid) / o.mid;
   r.market = { mid: pr.mid, driftSincePostPct: +(drift * 100).toFixed(3), quoteNowBps: wantBps };
@@ -468,7 +478,7 @@ CMDS.status = async () => out(Object.assign({ ok: true }, await offerStatus()));
 CMDS.peek = async () => {
   const seed = makerSeed(); if (!seed) return die("no maker wallet configured");
   const st = stLoad(); if (!st.offer) return out({ ok: true, hasOffer: false, takes: [] });
-  const pr = await marketPrice(); const price = pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() } : { ok: false, reason: pr.reason };
+  const pr = await marketPrice(); const price = pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() } : { ok: false, reason: pr.reason };
   const rows = await TP.peekTakes(relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), certifyFor(st.offer.side, price));
   out({ ok: true, hasOffer: true, block: st.offer.block, takes: rows.map(r => ({ slot: r.slot, valid: r.valid, answered: r.answered, reason: r.reason,
         deal: r.deal ? { xno: Number(BigInt(r.deal.xnoRaw) / (10n ** 24n)) / 1e6, xmr: Number(r.deal.xmrAtomic) / 1e12, priceE9: r.deal.priceE9 } : null,
@@ -576,7 +586,7 @@ CMDS.tick = async (args) => {
       const sizeRaw = advRaw;
       const intent = { side, price_e9: Math.round(ask * 1e9), size_log2 };
       const hyp = { xnoRaw: sizeRaw.toString(), priceE9: String(intent.price_e9), xmrAtomic: ((sizeRaw * BigInt(intent.price_e9) * 1000n) / (10n ** 30n)).toString() };
-      const cert = TP.certify(hyp, side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() }, { minBps: MIN_ACCEPT_BPS });
+      const cert = TP.certify(hyp, side === 0, { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() }, { minBps: MIN_ACCEPT_BPS });
       if (!cert.ok) { act("NOT posting: not a certified win (" + cert.reason + ")"); return "refused"; }
       if (!live) { act("DRY: would post " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps)"); return "would"; }
       const block = await beacon.publish(NANO_NODES, seed, PAIR, intent, () => {});
@@ -584,11 +594,24 @@ CMDS.tick = async (args) => {
       act("posted " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps) " + String(block).slice(0, 10)); return "posted"; };
 
     // 1. no trustworthy price -> nothing may rest on the book
-    if (!pr.ok) { act("oracle unhealthy: " + pr.reason); if (st.offer) await publishWithdraw(); return out({ ok: true, live, actions: log, verdict: "PAUSED" }); }
+    if (!pr.ok) {
+      act("oracle unhealthy: " + pr.reason);
+      // While a take is PENDING on the resting offer, a transient no-quote
+      // must HOLD, never withdraw/repost — pulling the block orphans the take
+      // (and the take's own relay chunks can be what rate-limited the oracle).
+      let pendingTake = false;
+      if (st.offer) { try { const rl = relayFor(seed);
+        for (let i = 0; i < 8 && !pendingTake; i++) {
+          if (await rl.fetch(TP.rvBox(st.offer.block), i) && !(await rl.fetch(TP.rvRespBox(st.offer.block), i))) pendingTake = true;
+        } } catch (e) {} }
+      if (pendingTake) { act("a take is PENDING — holding the offer through the oracle blip"); return out({ ok: true, live, actions: log, verdict: "HOLD" }); }
+      if (st.offer) await publishWithdraw();
+      return out({ ok: true, live, actions: log, verdict: "PAUSED" });
+    }
     // 2. takes first: a resting offer may already have demand
     let handoff = null, settled = null;
     if (st.offer) {
-      const price = { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() };
+      const price = { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() };
       const rows = await TP.peekTakes(relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), certifyFor(st.offer.side, price));
       for (const r of rows) {
         if (r.answered) continue;
@@ -659,7 +682,7 @@ async function settleTake(seed, offer, take, note) {
   const party = await TP.ceremony(wasm, XMR, rand, "mainnet", wire, roleIsA, take.deal, note, walletApi.account());
   store.set("party", party.snapshot());
   store.set("acceptCert", take.cert);
-  const priceFn = async () => { const pr = await marketPrice(); return pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: Date.now() } : { ok: false, reason: pr.reason }; };
+  const priceFn = async () => { const pr = await marketPrice(); return pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() } : { ok: false, reason: pr.reason }; };
   const deps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi, moneroPost: walletApi.moneroPost(),
                  note, store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2 };
   const result = await (roleIsA ? TP.runA : TP.runB)(deps, party) || {};
@@ -729,7 +752,16 @@ CMDS.watch = async (args) => {
     ws.send(JSON.stringify({ action: "subscribe", topic: "confirmation", options: { accounts: [a] } }));
     watched = a; log("watching rendezvous " + a.slice(0, 20) + "…");
   };
-  let lastNudge = 0;
+  // One take = several relay-chunk confirmations. Coalesce a burst into ONE
+  // tick (trailing 2 s debounce) and space ws-triggered ticks ≥ 12 s apart —
+  // seven ticks in 27 s is what rate-limited the oracle.
+  let wsTimer = null, lastWsTick = 0;
+  const nudge = () => {
+    if (wsTimer) return;
+    const wait = Math.max(2000, 12000 - (Date.now() - lastWsTick));
+    log("rendezvous activity — tick in " + Math.round(wait / 1000) + "s (coalescing burst)");
+    wsTimer = setTimeout(() => { wsTimer = null; lastWsTick = Date.now(); runTick("websocket"); }, wait);
+  };
   const connect = () => {
     try { ws = new WebSocket(WS_URL); } catch (e) { setTimeout(connect, 15000); return; }
     ws.onopen = () => { watched = ""; resub(); };
@@ -741,9 +773,7 @@ CMDS.watch = async (args) => {
         let raw = ev.data;
         if (typeof raw !== "string") raw = (raw && raw.text) ? await raw.text() : Buffer.from(raw).toString("utf8");
         const d = JSON.parse(raw);
-        if (d && d.topic === "confirmation") {
-          const n = Date.now(); if (n - lastNudge > 3000) { lastNudge = n; log("rendezvous activity — accepting now"); runTick("websocket"); }
-        }
+        if (d && d.topic === "confirmation") nudge();
       } catch (e) { log("ws frame decode: " + (e && e.message || e)); }
     };
     ws.onclose = (ev) => { log("ws closed (code " + ((ev && ev.code) || "?") + ") — reconnecting in 5s"); ws = null; setTimeout(connect, 5000); };
