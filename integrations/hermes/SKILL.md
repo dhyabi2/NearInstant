@@ -41,7 +41,9 @@ Nothing here acts on an unverified price. Before **every** action the CLI
 builds a certificate from the live market and refuses unless the action is a
 strictly positive net after the Monero fee. A certificate fails closed on:
 
-- no trustworthy price, or fewer than **2 agreeing sources**
+- no trustworthy price, or fewer than **2 agreeing sources** (of three
+  independent oracles — CoinGecko, CoinPaprika, CoinCap; the mid is cached
+  45 s and retried with backoff, so a burst or a one-source blip is absorbed)
 - a price older than **60 s**
 - a **market in motion** (the oracle's pump/dump guards: level jump, 10-min
   velocity, 30-min drift) — a level that still shows a win is not certifiable
@@ -111,6 +113,12 @@ every `XNOXMR_TICK_MS` (default 180000 ms).
 node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 0 --live
 ```
 
+Confirmation bursts are **coalesced into one tick** (a take arrives as several
+relay chunks), websocket frames of any shape are decoded, a 30 s keepalive ping
+holds the socket open, and close/decode problems are logged. A stuck tick
+releases its guard after `XNOXMR_TICK_TIMEOUT_MS`. With a nano.to API key, set
+`XNOXMR_NANO_RPC_KEY` and both rpc.nano.to and ws.nano.to use it.
+
 Run it under a supervisor (systemd, pm2, or a restart-on-exit shell loop); the
 cron `tick` below remains a fine fallback if you prefer stateless processes.
 
@@ -124,11 +132,14 @@ node <REPO>/integrations/hermes/scripts/xnoxmr.cjs tick --side 0 --live   # side
 
 Each tick:
 
-1. **health** — no trustworthy price ⇒ withdraw whatever is resting. Nothing
+1. **health** — no trustworthy price ⇒ withdraw whatever is resting — UNLESS
+   a take is pending on it: then the tick **HOLDs** through the blip, so a
+   transient no-quote can never orphan a live take. Nothing
    may sit on the book unverified.
 2. **peek** — read every take-request on the resting offer **without replying**.
    A certified take is **settled autonomously** (`SETTLING` → `SETTLED`); with
-   `XNOXMR_AUTOSETTLE=0` it becomes a `HANDOFF` report instead. A take
+   `XNOXMR_AUTOSETTLE=0` it becomes a `HANDOFF` report **and the taker gets an
+   immediate typed decline** (so they retry instead of waiting out 10 min). A take
    that is not a win ⇒ post a typed **decline** so the taker stops waiting in
    seconds instead of ten minutes.
 3. **status** — re-certify the resting offer at the current market:
@@ -257,7 +268,7 @@ loop does, on any tick where it no longer certifies.
 
 ## Guardrails that are not yours to relax
 
-- **Fail-closed pricing** — fewer than two agreeing oracles ⇒ nothing.
+- **Fail-closed pricing** — fewer than two of the three oracles agreeing ⇒ nothing.
 - **Autonomous settlement is ON by default** (disable with `XNOXMR_AUTOSETTLE=0`) — it still certifies every irreversible step; **never bypass a refusal** or relax the certify gates. It has not completed on-chain between two real parties: watch the first runs, small amounts.
 
 ## Trust model, stated so you can defend it
