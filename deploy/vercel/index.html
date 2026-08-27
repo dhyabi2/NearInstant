@@ -1802,7 +1802,7 @@ $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b
 let expWasm = null, expBeacon = null;
 // Bump on every deploy so browsers fetch fresh scripts + worker instead of a
 // stale cached copy (workers cache especially aggressively).
-const ASSET_V = "52379eb64157";
+const ASSET_V = "71da05ad8f08";
 function expScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement("script");
@@ -4099,6 +4099,12 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     tpLog("Check the amounts, and that your " + di.coin + " goes to:\n  " + dest + "\nThen tap Confirm.");
     return;
   }
+  // Committing now: take the in-flight lock and disable the button UP FRONT. The
+  // re-resolve scan and fund check below run before the main try, so without an
+  // early guard a second tap during them does nothing visible or starts a second
+  // commit (the "Confirm not responding" glitch). Every exit below re-enables it.
+  if (window.__tpTakeRunning) return;
+  window.__tpTakeRunning = true; $("tpTake").disabled = true;
   // Re-resolve to the maker's CURRENT live offer before committing. The maker
   // reprices/reposts frequently (a decline usually rides a market move that also
   // reprices the offer), and a take posted to a RETIRED block's rendezvous is
@@ -4108,15 +4114,14 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
   try {
     const liveList = await expBeacon.scanLive(rpcState.nano, "XNO/XMR", swSelected.intent.side, OFFER_TTL_SECS);
     const cur = liveList.find((o) => o.maker === swSelected.maker);
-    if (!cur) { tpLog("This maker's offer is no longer live (withdrawn or replaced). Refreshing the book — pick a current offer."); swOffersRefresh(true); return; }
+    if (!cur) { tpLog("This maker's offer is no longer live (withdrawn or replaced). Refreshing the book — pick a current offer."); window.__tpTakeRunning = false; $("tpTake").disabled = false; swOffersRefresh(true); return; }
     if (String(cur.blockHash).toLowerCase() !== String(swSelected.blockHash).toLowerCase()) {
-      swSelected = cur; swSelRender(cur); tpResetReview(); try { tpSync(); } catch (e) {} tpBtnSync();
+      swSelected = cur; swSelRender(cur); tpResetReview(); try { tpSync(); } catch (e) {} window.__tpTakeRunning = false; $("tpTake").disabled = false; tpBtnSync();
       tpLog("The maker replaced this offer with a fresh one (price may have changed) — check the amounts and tap Confirm again.");
       return;
     }
   } catch (e) { /* scan failed: fall through and try the selected block anyway */ }
   const deal = tpPending; const extDest = deal.dest; tpResetReview();
-  window.__tpTakeRunning = true;   // from here on a live take owns the engine — block page auto-recovery (incl. through the deposit wait)
   // Fund check — guide a live-detected deposit BEFORE anything is posted, for
   // whichever coin the taker sells (and, for an XMR seller, the small XNO the
   // take-request posting needs). No more cryptic "identity balance too low".
@@ -4129,14 +4134,14 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     const have = await readXno();
     if (have < needXno) {
       tpLog("Your wallet needs about " + needXno.toFixed(3) + " XNO — send XNO to fund the swap (auto-detected).");
-      if (!await tpShowDeposit("xno", needXno, have)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; tpBtnSync(); return; }
+      if (!await tpShowDeposit("xno", needXno, have)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; $("tpTake").disabled = false; tpBtnSync(); return; }
     }
   } else {
     // sell XMR → need a little XNO to post the request, and enough XMR to fund
     const dustXno = 0.01, haveXno = await readXno();
     if (haveXno < dustXno) {
       tpLog("Selling XMR also needs a little XNO to post the request — send ~" + dustXno + " XNO (auto-detected).");
-      if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; tpBtnSync(); return; }
+      if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; $("tpTake").disabled = false; tpBtnSync(); return; }
     }
     const needXmr = Number(deal.xmrAtomic) / 1e12 + 0.001;   // pay XMR + Monero fee buffer
     let haveXmr = parseFloat(walletBal.xmr || 0);
@@ -4145,7 +4150,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     }
     if (haveXmr < needXmr) {
       tpLog("Your wallet needs about " + needXmr.toFixed(6) + " XMR — send XMR to fund the swap (auto-detected; Monero takes ~20 min to confirm).");
-      if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; tpBtnSync(); return; }
+      if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; $("tpTake").disabled = false; tpBtnSync(); return; }
     }
   }
   try {

@@ -766,6 +766,24 @@
     }
     // Confirm-before-reveal, then complete the adaptor claim (reveals x on-chain).
     if (!S.get("claim")) {
+      // TIMING ALIGNMENT (critical). The claim co-sign below is a LIVE 2-of-2
+      // wire round: A and B must be at it together. A does not co-sign until OUR
+      // XMR lock reaches XMR_CONF confirmations (its safety — it won't make its
+      // XNO claimable until our lock is deep), which is ~20 min after we lock.
+      // If we reach the co-sign right after A's XNO confirms (~1 min) we sit on
+      // the wire, time out long before A arrives, and abandon a swap that would
+      // otherwise complete — leaving both sides to waste the wait and refund.
+      // So we wait the SAME confirmations first, using our recorded lock height,
+      // and reach the co-sign in step with A.
+      const lockH = (S.get("lock") || {}).h || 0;
+      try {
+        // Wait for OUR lock to reach XMR_CONF confirmations the SAME way A does
+        // (scan-based, counting from the real lock block), ungated (price:null —
+        // we already locked; profitability is moot). In step with A's wait, so
+        // the co-sign wire round below finds both sides present.
+        const cdeps = Object.assign({}, deps, { price: null });
+        await waitJointXmrLock(cdeps, party, deal.xmrAtomic, lockH ? Math.max(1, lockH - 60) : 0, undefined, 5000);
+      } catch (e) { /* proceed; the wire timeout still protects us */ }
       for (let i = 0; i < 120 && !(await confirmedQuorum(deps, open.hash)); i++) { deps.note("waiting for joint account to confirm on a quorum…"); await new Promise((r) => setTimeout(r, 5000)); }
       // The claim sends the joint XNO to the XNO-BUYER, which is B (the
       // XMR-seller) itself. B must use its OWN wallet here; A independently
