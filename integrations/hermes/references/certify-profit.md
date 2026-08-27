@@ -62,7 +62,7 @@ certificate the deal was accepted on.
 | `MAX_MID_AGE_MS` | **60 000** | a price older than this certifies nothing |
 | `MAX_UNREALIZED_LOSS_BPS` | **50 bps** | how far an accepted deal may drift adversely before a later gate refuses |
 | `MAX_STRESS` | **2** | pump/dump guard level at which nothing certifies |
-| `XMR_TX_FEE_ATOMIC_DEFAULT` | **200 000 000** piconero (0.0002 XMR) | conservative fee subtracted from every net |
+| `XMR_TX_FEE_ATOMIC_DEFAULT` | **80 000 000** piconero (0.00008 XMR) | assumed fee subtracted from every net — 2x the real cost at the Unimportant priority the builder uses (~0.00004/tx) |
 
 ## The profit math
 

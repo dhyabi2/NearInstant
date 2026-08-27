@@ -165,6 +165,12 @@ pub fn xmr_joint_secret(
     .map_err(js)
 }
 
+/// Fee priority for our txs. `Unimportant` (fees[0], ~20k/weight ≈ 0.00003-
+/// 0.00004 XMR per tx) instead of `Normal` (4x that): Monero blocks are rarely
+/// full, so low-priority txs still confirm within a block or two — and this
+/// protocol already waits ~10 confirmations (~20 min), so a minute of inclusion
+/// delay is immaterial while the fee drops 4x. That directly lowers the
+/// minimum viable fill (min ~= fee / margin) without touching revenue.
 /// Ring size. Named so both the send and sweep paths cannot drift apart.
 const RING_LEN: u8 = 16;
 /// Upper bound on the daemon-quoted fee rate, in piconero per weight unit.
@@ -560,7 +566,7 @@ mod node_client {
             // below a draining one.
             let fee_rate = self
                 .daemon
-                .fee_rate(FeePriority::Normal, MAX_FEE_PER_WEIGHT)
+                .fee_rate(FeePriority::Unimportant, MAX_FEE_PER_WEIGHT)
                 .await
                 .map_err(|e| js(format!("fee rate rejected (node may be quoting an absurd fee): {e:?}")))?;
 
@@ -620,7 +626,7 @@ mod node_client {
                     .map_err(|e| js(format!("decoys: {e:?}")))?;
             let fee_rate = self
                 .daemon
-                .fee_rate(FeePriority::Normal, MAX_FEE_PER_WEIGHT)
+                .fee_rate(FeePriority::Unimportant, MAX_FEE_PER_WEIGHT)
                 .await
                 .map_err(|e| js(format!("fee rate: {e:?}")))?;
 

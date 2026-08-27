@@ -22,9 +22,11 @@ const MID = 0.000925;
     ok(BigInt(b2.grossAtomic) > 0n && b2.netBps > 95 && b2.netBps < 105, `B: price 1% below mid ~= +100 bps (got ${b2.netBps})`);
     const a = TP.partyProfit(d, true, MID, "0");
     ok(BigInt(a.grossAtomic) > 0n && a.netBps > 95 && a.netBps < 105, `A (sells XNO): price 1% above mid ~= +100 bps (got ${a.netBps})`);
-    const fee = TP.partyProfit(d2, false, MID);       // default fee 0.0002 XMR on ~0.00925 XMR outlay = ~216 bps
+    const fee = TP.partyProfit(d2, false, MID);       // default fee 0.00008 XMR on ~0.00925 XMR outlay = ~86 bps
     ok(BigInt(fee.netAtomic) < BigInt(b2.netAtomic), "fee is subtracted from net");
-    ok(fee.netBps < 0, `on a $4 deal the 0.0002 XMR fee alone turns +100 bps into a loss (${fee.netBps} bps) - fees matter at this size`);
+    const d3 = deal(3, Math.round(MID * 0.99 * 1e9));  // ~$1.2: fee ~288 bps swamps the +100 bps margin
+    const fee3 = TP.partyProfit(d3, false, MID);
+    ok(fee3.netBps < 0, `on a ~$1 deal the 0.00008 XMR fee alone turns +100 bps into a loss (${fee3.netBps} bps) - fees matter at this size`);
   }
 
   console.log("\n2. certify() refuses everything it cannot vouch for");

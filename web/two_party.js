@@ -75,7 +75,7 @@
   // mid, how fresh it was, how many sources agreed, the fee assumed, and the
   // resulting net. It is persisted so realised results can be audited against
   // it later instead of against a hope.
-  const XMR_TX_FEE_ATOMIC_DEFAULT = 200000000n;     // 0.0002 XMR, conservative
+  const XMR_TX_FEE_ATOMIC_DEFAULT = 80000000n;      // 0.00008 XMR — 2x the real Unimportant-priority cost (~0.00004/tx, verified via get_fee_estimate); the builder sends at that tier
   const MID_MAX_AGE_MS_DEFAULT = 60 * 1000;
 
   // Value a deal from ONE party's side at a mid (XMR per XNO). A always sells
