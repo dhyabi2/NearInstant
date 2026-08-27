@@ -2413,11 +2413,22 @@ async function swRenderEmpty(box, raw, side) {
       });
     }
   }
+  // No Earn/maker link here — a taker on the Swap tab wants to SWAP, and
+  // pointing them at market-making mid-flow conflates the two roles. The one
+  // useful action is switching direction when the OTHER side has live offers.
   const cta = document.createElement("div"); cta.className = "ecta";
-  const bt = document.createElement("button"); bt.className = "ecta-btn";
-  bt.textContent = raw.length ? "Post a fresh offer — live instantly, for 10 minutes" : "Be the first — post an offer now";
-  bt.onclick = () => { appView("earn"); try { const sb = $("smartBtn"); if (sb) sb.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} };
-  cta.append(bt); wrap.append(cta);
+  let other = 0;
+  try { other = (await expBeacon.scanLive(rpcState.nano, "XNO/XMR", side === 0 ? 1 : 0, OFFER_TTL_SECS)).length; } catch (e) {}
+  if (other > 0) {
+    const bt = document.createElement("button"); bt.className = "ecta-btn";
+    bt.textContent = other + " live offer" + (other > 1 ? "s" : "") + " in the other direction — switch";
+    bt.onclick = () => { const b = document.querySelector('#swSideSel button[data-s="' + (swSide === "xmr" ? "xno" : "xmr") + '"]'); if (b) b.click(); };
+    cta.append(bt);
+  } else {
+    cta.textContent = "Offers appear the moment a maker comes online — this list refreshes automatically.";
+    cta.style.fontWeight = "600"; cta.style.color = "var(--faint)";
+  }
+  wrap.append(cta);
   box.append(wrap);
 }
 // Live-book liquidity total, shown under the machine (the "liquidity pools"
@@ -2534,6 +2545,7 @@ async function swOffersRefresh(force) {
   } catch (e) { box.textContent = "Could not read offers: " + e.message; }
 }
 $("swOffersRef").onclick = () => swOffersRefresh(true);
+setInterval(() => { try { if ($("viewSwap") && !$("viewSwap").classList.contains("hidden")) swOffersRefresh(); } catch (e) {} }, 30000);   // book auto-refresh on the Swap tab
 if ($("viewSwap") && !$("viewSwap").classList.contains("hidden")) swOffersRefresh(true);
 // The liquidity-pools caption reflects the LIVE book on every view (the machine
 // is the page's centrepiece), refreshed on load, on a timer, and on manual
