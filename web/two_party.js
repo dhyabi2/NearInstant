@@ -913,7 +913,11 @@
       // otherwise complete — leaving both sides to waste the wait and refund.
       // So we wait the SAME confirmations first, using our recorded lock height,
       // and reach the co-sign in step with A.
-      const lockH = (S.get("lock") || {}).h || 0;
+      let lockH = (S.get("lock") || {}).h || 0;
+      // Exact pointer when we have it: our own lock tx hash resolves to its
+      // block in one daemon call, so this wait scans ~10 blocks, not ~60.
+      try { const lk0 = S.get("lock"); const th = lk0 && lk0.tx && (lk0.tx.tx_hash || (typeof lk0.tx === "string" ? lk0.tx : null));
+            if (th) { const hh = await xmrTxHeight(deps, th); if (hh) lockH = hh; } } catch (e) {}
       try {
         // Wait for OUR lock to reach XMR_CONF confirmations the SAME way A does
         // (scan-based, counting from the real lock block), ungated (price:null —
