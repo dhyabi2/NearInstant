@@ -18,6 +18,7 @@ const B = require(path.join(ROOT, "web/beacon.js"));
 
 const PAIR = "XNO/XMR";
 const OFFER_TTL_SECS = 600;          // must match web/index.html
+const GRACE_MS = 120000;             // keep answering takes on a just-superseded rendezvous this long
 const DEFAULT_OFFER_XNO = 50;        // default REQUESTED size when --size omitted; always capped down to fundable balance (see fundableXno)
 const RAW = 10n ** 30n;
 
@@ -489,7 +490,7 @@ async function offerStatus() {
   r.certifiedNow = { ok: cert.ok, netBps: cert.netBps, unrealizedBps: cert.unrealizedBps, reason: cert.reason };
   if (r.expired) Object.assign(r, { verdict: "REPOST", reason: "offer TTL expired" });
   else if (!cert.ok) Object.assign(r, { verdict: "WITHDRAW", reason: "no longer a certified win: " + cert.reason });
-  else if (drift >= Math.max(0.001, 0.25 * o.bps / 10000)) Object.assign(r, { verdict: "REPRICE", reason: "mid drifted " + (drift * 100).toFixed(2) + "% (trigger " + (Math.max(0.001, 0.25 * o.bps / 10000) * 100).toFixed(2) + "%)" });
+  else if (drift >= Math.max(0.0025, 0.4 * o.bps / 10000)) Object.assign(r, { verdict: "REPRICE", reason: "mid drifted " + (drift * 100).toFixed(2) + "% (trigger " + (Math.max(0.0025, 0.4 * o.bps / 10000) * 100).toFixed(2) + "%)" });
   else Object.assign(r, { verdict: "HOLD", reason: "certified, net " + cert.netBps + " bps" });
   return r;
 }
@@ -604,8 +605,17 @@ CMDS.tick = async (args) => {
     }
     const pr = await marketPrice();
     const st = stLoad();
+    // Remember a block we are about to leave, so the grace window can still
+    // answer a take that lands on its rendezvous just after we moved on.
+    const recordSuperseded = (old) => {
+      if (!old || !old.block) return;
+      st.recent = (st.recent || []).filter((x) => x && x.block && (Date.now() - x.at) < GRACE_MS);
+      st.recent.push({ block: old.block, intent: old.intent, side: old.side, at: Date.now() });
+      st.recent = st.recent.slice(-3);
+    };
     const publishWithdraw = async () => { if (!live) { act("DRY: would withdraw"); return; }
       const h = await beacon.publish(NANO_NODES, seed, PAIR, { side: st.offer ? st.offer.side : side, price_e9: 0, size_log2: 0 }, () => {});
+      recordSuperseded(st.offer);
       st.offer = null; st.lastWithdraw = { at: Date.now(), block: h }; stSave(st); act("withdrew " + String(h).slice(0, 10)); };
     const publishPost = async () => {
       const sigD = sigmaDaily(phPush(pr.mid)); const bps = quoteBps(sigD, 1); const margin = bps / 10000;
@@ -627,6 +637,7 @@ CMDS.tick = async (args) => {
       if (!cert.ok) { act("NOT posting: not a certified win (" + cert.reason + ")"); return "refused"; }
       if (!live) { act("DRY: would post " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps)"); return "would"; }
       const block = await beacon.publish(NANO_NODES, seed, PAIR, intent, () => {});
+      recordSuperseded(st.offer);
       st.offer = { block: String(block).toLowerCase(), intent, side, sizeXno, mid: pr.mid, ask, bps, cert, at: Date.now() }; stSave(st);
       act("posted " + sizeXno + " XNO at " + ask.toFixed(9) + " (" + bps + " bps, net " + cert.netBps + " bps) " + String(block).slice(0, 10)); return "posted"; };
 
@@ -655,14 +666,15 @@ CMDS.tick = async (args) => {
     // visible AFTER this first peek — closing that race for good.
     let handoff = null, settled = null;
     const price = { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() };
-    const handleTake = async (r) => {
+    const handleTake = async (r, ctx) => {
+      ctx = ctx || st.offer;
       if (r.answered || !r.valid) return;                         // junk/answered: nothing to do
-      if (!(r.cert && r.cert.ok)) { act("declining slot " + r.slot + ": " + (r.cert && r.cert.reason)); if (live) await TP.postDecline(relayFor(seed), st.offer.block, r.slot, r.cert && r.cert.reason); return; }
+      if (!(r.cert && r.cert.ok)) { act("declining slot " + r.slot + ": " + (r.cert && r.cert.reason)); if (live) await TP.postDecline(relayFor(seed), ctx.block, r.slot, r.cert && r.cert.reason); return; }
       handoff = r;
       if (!(AUTOSETTLE && live)) {
         act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - HAND OFF (autosettle off)");
         // Tell the taker NOW instead of letting them wait out the 10-min window.
-        if (live) { try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is in hand-off mode (autosettle off) — a human must settle; retry in a few minutes or pick another offer"); act("told the taker not to wait (hand-off decline)"); } catch (e) {} }
+        if (live) { try { await TP.postDecline(relayFor(seed), ctx.block, r.slot, "maker is in hand-off mode (autosettle off) — a human must settle; retry in a few minutes or pick another offer"); act("told the taker not to wait (hand-off decline)"); } catch (e) {} }
         return;
       }
       if (__settling) {
@@ -670,16 +682,16 @@ CMDS.tick = async (args) => {
         // INSTANT decline (retry after the repost) rather than silently queueing.
         if (__settling.slot === r.slot) act("slot " + r.slot + " is the take already settling — in progress");
         else { act("certified take on slot " + r.slot + " while slot " + __settling.slot + " settles — declining so they re-take after the repost");
-               try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is settling another take on this offer — it re-posts when done; please take again then"); } catch (e) {} }
+               try { await TP.postDecline(relayFor(seed), ctx.block, r.slot, "maker is settling another take on this offer — it re-posts when done; please take again then"); } catch (e) {} }
         return;
       }
       act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - accepting");
       try {
-        const cf = (dl) => certifyFor(st.offer.side, price)(dl);
+        const cf = (dl) => certifyFor(ctx.side, price)(dl);
         const authSign = (msg) => { try { return wasm.msg_sign(seed, msg); } catch (e) { return null; } };
-        const hs = await TP.makerPollTake(MB, relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), cf, authSign);
+        const hs = await TP.makerPollTake(MB, relayFor(seed), ctx.block, ctx.intent, maxXnoRawOf(ctx.intent), cf, authSign);
         if (hs && hs.deal && hs.shared) {
-          const offerSnap = st.offer;
+          const offerSnap = ctx;
           const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, note);
           if (WATCH_MODE) {
             // Settlement takes 25-40 min; awaiting it INSIDE the tick froze the
@@ -704,7 +716,22 @@ CMDS.tick = async (args) => {
     };
     if (st.offer) {
       const rows = await TP.peekTakes(relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), certifyFor(st.offer.side, price));
-      for (const r of rows) await handleTake(r);
+      for (const r of rows) await handleTake(r, st.offer);
+    }
+    // GRACE WINDOW: a take can land on a rendezvous we JUST repriced away (the
+    // taker's page had not caught the repost yet). Keep answering takes on the
+    // last few superseded blocks for GRACE_MS — honour one that still certifies
+    // at the current market, decline the rest so the taker stops waiting. This
+    // closes the reprice/resubmit race regardless of what the taker does.
+    {
+      const recent = (st.recent || []).filter((x) => x && x.block && (Date.now() - x.at) < GRACE_MS && (!st.offer || x.block !== st.offer.block));
+      for (const rb of recent) {
+        if (__settling) break;
+        try {
+          const rows2 = await TP.peekTakes(relayFor(seed), rb.block, rb.intent, maxXnoRawOf(rb.intent), certifyFor(rb.side, price));
+          for (const r of rows2) if (!r.answered && r.valid) { act("grace: answering take on superseded block " + String(rb.block).slice(0, 10) + " slot " + r.slot); await handleTake(r, rb); }
+        } catch (e) { act("grace peek skipped: " + (e && e.message || e)); }
+      }
     }
     // 3. the resting offer itself
     const status = await offerStatus();
