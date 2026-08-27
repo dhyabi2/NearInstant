@@ -555,7 +555,7 @@ CMDS.tick = async (args) => {
           const priceFn = async () => { const p2 = await marketPrice(); return p2.ok ? { ok: true, mid: p2.mid, sources: p2.sources, at: Date.now() } : { ok: false, reason: p2.reason }; };
           const rdeps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi: wApi, moneroPost: wApi.moneroPost(),
                           note: (m) => act("resume: " + m), store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2,
-                          recoverWaitMs: 60 * 1000,
+                          recoverWaitMs: 60 * 1000, fundWaitMs: FUND_WAIT_MS,
                           claimWaitMs: Math.max(60 * 1000, 60 * 60 * 1000 - (Date.now() - ((o.presigned && o.presigned.at) || Date.now()))) };
           try {
             const rparty = TP.restore(wasm, o.party, null);
@@ -610,69 +610,89 @@ CMDS.tick = async (args) => {
       if (st.offer) await publishWithdraw();
       return out({ ok: true, live, actions: log, verdict: "PAUSED" });
     }
-    // 2. takes first: a resting offer may already have demand
+    // 2. TAKES FIRST — a resting offer may already have demand, and answering
+    // it takes strict priority over managing the offer. A take lives on the
+    // BLOCK it was posted to, so any withdraw/reprice/repost of that block while
+    // a valid take is still unanswered ORPHANS the taker (filed 3763062928e0:
+    // mid drifted past the reprice trigger between the click and this tick, the
+    // block was repriced away, the take was lost). handleTake is factored out so
+    // the pre-withdraw guard in step 3 can answer a take that only became
+    // visible AFTER this first peek — closing that race for good.
     let handoff = null, settled = null;
-    if (st.offer) {
-      const price = { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() };
-      const rows = await TP.peekTakes(relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), certifyFor(st.offer.side, price));
-      for (const r of rows) {
-        if (r.answered) continue;
-        if (!r.valid) continue;                                   // junk: ignore, the app rate-limits this
-        if (r.cert && r.cert.ok) {
-          handoff = r;
-          if (AUTOSETTLE && live) {
-            if (__settling) {
-              // One settlement at a time per offer. A second certified taker
-              // gets an INSTANT decline (retry after the repost) instead of
-              // silently queueing behind a 25-40 min settlement.
-              if (__settling.slot === r.slot) act("slot " + r.slot + " is the take already settling — in progress");
-              else {
-                act("certified take on slot " + r.slot + " while slot " + __settling.slot + " settles — declining so they re-take after the repost");
-                try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is settling another take on this offer — it re-posts when done; please take again then"); } catch (e) {}
-              }
-            } else {
-            act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - accepting");
-            try {
-              const cf = (dl) => certifyFor(st.offer.side, price)(dl);
-              const authSign = (msg) => { try { return wasm.msg_sign(seed, msg); } catch (e) { return null; } };
-              const hs = await TP.makerPollTake(MB, relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), cf, authSign);
-              if (hs && hs.deal && hs.shared) {
-                const offerSnap = st.offer;
-                const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, note);
-                if (WATCH_MODE) {
-                  // Settlement takes 25-40 min; awaiting it INSIDE the tick froze
-                  // the whole maker loop (other takes neither accepted nor
-                  // declined). Under watch it runs in the background; the loop
-                  // keeps peeking/declining and holds the offer until done.
-                  __settling = { slot: hs.slot, block: offerSnap.block, at: Date.now() };
-                  runSettle((m) => console.error("[settle] " + m))
-                    .then((res) => {
-                      console.error("[settle] finished: " + (res && res.declined ? "declined: " + (res.reason || "") : res && res.refunded ? "refunded: " + (res.reason || "") : "SETTLED ok"));
-                      if (res && res.done && !res.declined && !res.refunded) { const s2 = stLoad(); s2.offer = null; stSave(s2); }
-                    })
-                    .catch((e) => console.error("[settle] error (session persists; auto-resume retries): " + (e && e.message || e)))
-                    .finally(() => { __settling = null; });
-                  act("settlement STARTED in the background (slot " + hs.slot + ") — maker loop stays responsive");
-                } else {
-                  const res = await runSettle((m) => act(m));
-                  if (res.declined || res.refunded) act((res.declined ? "declined" : "refunded") + " during settlement: " + (res.reason || ""));
-                  else { act("SETTLED autonomously ok"); settled = res; st.offer = null; stSave(st); }
-                }
-              } else if (hs && hs.declined) { act("re-certify at reply time declined: " + hs.declined); }
-            } catch (e) { act("settlement error (safe to retry next tick): " + (e && e.message || e)); }
-            }
-          } else {
-            act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - HAND OFF (autosettle off)");
-            // Tell the taker NOW instead of letting them wait out the 10-min
-            // handshake window: hand-off mode needs a human to settle.
-            if (live) { try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is in hand-off mode (autosettle off) — a human must settle; retry in a few minutes or pick another offer"); act("told the taker not to wait (hand-off decline)"); } catch (e) {} }
-          }
-        }
-        else { act("declining slot " + r.slot + ": " + (r.cert && r.cert.reason)); if (live) await TP.postDecline(relayFor(seed), st.offer.block, r.slot, r.cert && r.cert.reason); }
+    const price = { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() };
+    const handleTake = async (r) => {
+      if (r.answered || !r.valid) return;                         // junk/answered: nothing to do
+      if (!(r.cert && r.cert.ok)) { act("declining slot " + r.slot + ": " + (r.cert && r.cert.reason)); if (live) await TP.postDecline(relayFor(seed), st.offer.block, r.slot, r.cert && r.cert.reason); return; }
+      handoff = r;
+      if (!(AUTOSETTLE && live)) {
+        act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - HAND OFF (autosettle off)");
+        // Tell the taker NOW instead of letting them wait out the 10-min window.
+        if (live) { try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is in hand-off mode (autosettle off) — a human must settle; retry in a few minutes or pick another offer"); act("told the taker not to wait (hand-off decline)"); } catch (e) {} }
+        return;
       }
+      if (__settling) {
+        // One settlement at a time per offer. A second certified taker gets an
+        // INSTANT decline (retry after the repost) rather than silently queueing.
+        if (__settling.slot === r.slot) act("slot " + r.slot + " is the take already settling — in progress");
+        else { act("certified take on slot " + r.slot + " while slot " + __settling.slot + " settles — declining so they re-take after the repost");
+               try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is settling another take on this offer — it re-posts when done; please take again then"); } catch (e) {} }
+        return;
+      }
+      act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - accepting");
+      try {
+        const cf = (dl) => certifyFor(st.offer.side, price)(dl);
+        const authSign = (msg) => { try { return wasm.msg_sign(seed, msg); } catch (e) { return null; } };
+        const hs = await TP.makerPollTake(MB, relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), cf, authSign);
+        if (hs && hs.deal && hs.shared) {
+          const offerSnap = st.offer;
+          const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, note);
+          if (WATCH_MODE) {
+            // Settlement takes 25-40 min; awaiting it INSIDE the tick froze the
+            // whole maker loop. Under watch it runs in the background; the loop
+            // keeps peeking/declining and holds the offer until done.
+            __settling = { slot: hs.slot, block: offerSnap.block, at: Date.now() };
+            runSettle((m) => console.error("[settle] " + m))
+              .then((res) => {
+                console.error("[settle] finished: " + (res && res.declined ? "declined: " + (res.reason || "") : res && res.refunded ? "refunded: " + (res.reason || "") : "SETTLED ok"));
+                if (res && res.done && !res.declined && !res.refunded) { const s2 = stLoad(); s2.offer = null; stSave(s2); }
+              })
+              .catch((e) => console.error("[settle] error (session persists; auto-resume retries): " + (e && e.message || e)))
+              .finally(() => { __settling = null; });
+            act("settlement STARTED in the background (slot " + hs.slot + ") — maker loop stays responsive");
+          } else {
+            const res = await runSettle((m) => act(m));
+            if (res.declined || res.refunded) act((res.declined ? "declined" : "refunded") + " during settlement: " + (res.reason || ""));
+            else { act("SETTLED autonomously ok"); settled = res; st.offer = null; stSave(st); }
+          }
+        } else if (hs && hs.declined) { act("re-certify at reply time declined: " + hs.declined); }
+      } catch (e) { act("settlement error (safe to retry next tick): " + (e && e.message || e)); }
+    };
+    if (st.offer) {
+      const rows = await TP.peekTakes(relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), certifyFor(st.offer.side, price));
+      for (const r of rows) await handleTake(r);
     }
     // 3. the resting offer itself
     const status = await offerStatus();
+    // ROOT-CAUSE GUARD (filed 3763062928e0): a take lives on the block it was
+    // posted to, so NEVER withdraw/reprice/repost a block that still has an
+    // unanswered VALID take — that orphans the taker. Re-peek right before we
+    // would pull the block; this catches a take that only became visible AFTER
+    // step 2's peek (the market-drift race). Answer it here — accept if it
+    // certifies, decline if not — and if accepting started a settlement, HOLD
+    // the block and repost once it clears. If every late take was declined, the
+    // block is clean and the original verdict proceeds. This also protects the
+    // TTL/REPOST path, not just REPRICE.
+    if (st.offer && status.hasOffer && status.verdict !== "HOLD" && !__settling && !handoff) {
+      try {
+        const rows2 = await TP.peekTakes(relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), certifyFor(st.offer.side, price));
+        const late = rows2.filter((r) => r.valid && !r.answered);
+        if (late.length) {
+          act(status.verdict + " deferred: " + late.length + " unanswered take(s) on " + String(st.offer.block).slice(0, 10) + " — answering before any repost so none is orphaned");
+          for (const r of late) await handleTake(r);
+          if (__settling || handoff) { status.verdict = "HOLD"; status.reason = "answered a late take on the block; repost deferred"; }
+        }
+      } catch (e) { act("pre-withdraw take-guard skipped (non-fatal): " + (e && e.message || e)); }
+    }
     let postOutcome = null;   // "posted" | "would" | "refused" — what publishPost actually did this cycle
     if (__settling) { act("settlement in progress (slot " + __settling.slot + ", " + Math.round((Date.now() - __settling.at) / 1000) + "s) — holding the offer; no reprice/withdraw"); }
     else if (handoff) { act("holding the offer for the human settling the certified take"); }
@@ -718,8 +738,19 @@ async function settleTake(seed, offer, take, note) {
   store.set("acceptCert", take.cert);
   const priceFn = async () => { const pr = await marketPrice(); return pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() } : { ok: false, reason: pr.reason }; };
   const deps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi, moneroPost: walletApi.moneroPost(),
-                 note, store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2 };
-  const result = await (roleIsA ? TP.runA : TP.runB)(deps, party) || {};
+                 note, store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2, fundWaitMs: FUND_WAIT_MS };
+  let result;
+  try { result = await (roleIsA ? TP.runA : TP.runB)(deps, party) || {}; }
+  catch (e) {
+    // The taker never funded — end cleanly and let the offer keep resting for
+    // the next taker (nothing was locked, so there is nothing to recover).
+    if (e && e.fundTimeout) {
+      store.set("done", { at: Date.now(), result: { abandoned: true, reason: "funding timeout" } });
+      note("counterparty never funded within the window — abandoned cleanly; the offer stays live for the next taker");
+      return { done: false, abandoned: true, reason: "funding timeout" };
+    }
+    throw e;
+  }
   store.set("done", { at: Date.now(), result });
   return result;
 }
@@ -732,6 +763,10 @@ function fileStore(sessionId) {
 }
 // Autonomous settlement is ON by default; disable only with XNOXMR_AUTOSETTLE=0.
 const AUTOSETTLE = env("XNOXMR_AUTOSETTLE", "1") !== "0";
+// How long the maker waits for the taker's XNO to fund the joint account before
+// abandoning the settlement cleanly (nothing is locked at that point). Bounds a
+// vanished-taker hang that would otherwise freeze the offer until a restart.
+const FUND_WAIT_MS = Math.max(30000, parseInt(env("XNOXMR_FUND_WAIT_MS", "300000"), 10) || 300000);
 
 CMDS.settle = async () => {
   if (!AUTOSETTLE) { out({

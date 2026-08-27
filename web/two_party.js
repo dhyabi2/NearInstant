@@ -612,6 +612,14 @@
     const cached = deps.store.get("open"); if (cached) return cached;
     const I = deps.beacon._internals, acctHex = party.jointNanoAccount;
     let ent = [];
+    // BOUND the funding wait. Nano funding is near-instant, so if the joint
+    // account is not funded within this window the counterparty walked during
+    // setup — and this wait must END, not spin forever. Nothing is locked here
+    // (B has committed nothing; A has only its own refundable XNO), so a clean
+    // abandon is always safe. Left unbounded, a maker whose taker vanished would
+    // hold its offer (no reprice/withdraw/repost) until the process restarted —
+    // the whole book would read count 0 for everyone (filed f6d2d41abedf).
+    const fundDeadline = Date.now() + (deps.fundWaitMs || 5 * 60 * 1000);
     for (let round = 0; ; round++) {
       const rcv = await I.rpc(deps.urls, { action: "receivable", account: party.jointNanoAddress, count: "5", threshold: "1" });
       const b = rcv && rcv.blocks && typeof rcv.blocks === "object" ? rcv.blocks : {};
@@ -621,6 +629,11 @@
       if (!broadcast && deps.price && round % 4 === 3) {
         const c = await gate(deps, party, "while waiting for funding");
         if (!c.ok) { const err = new Error("declined before funding arrived: " + c.reason); err.declined = c; throw err; }
+      }
+      if (Date.now() > fundDeadline) {
+        const secs = Math.round((deps.fundWaitMs || 5 * 60 * 1000) / 1000);
+        const err = new Error("the counterparty never funded the joint account within " + secs + "s — abandoning cleanly. Nothing was locked, so there is nothing to refund; the offer is free to be taken again.");
+        err.fundTimeout = true; throw err;
       }
       deps.note("waiting for the XNO funding to reach the joint account…");
       await new Promise((r) => setTimeout(r, 8000));
