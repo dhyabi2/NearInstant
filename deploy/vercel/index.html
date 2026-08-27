@@ -3227,7 +3227,15 @@ function tpSync(driver) {
     if (deal && !deal.tooBig && !deal.tooSmall && !deal.unviable) {
       const getVal = swSide === "xno" ? Number(deal.xmrAtomic) / 1e12 : Number(deal.xnoRaw) / 1e30;
       if ($("tpGet")) $("tpGet").value = tpFmtAmt(getVal, co.get);
-    } else if (driver === "pay" && $("tpGet")) { $("tpGet").value = ""; }
+    } else if (driver === "pay" && $("tpGet")) {
+      // The deal is too small / too big / unviable — but the CONVERSION at the
+      // offer price is plain math, and an empty receive field reads as "broken".
+      // Always show what the typed amount converts to; the button/quote/min-hint
+      // carry the validity messaging.
+      const v = parseFloat((($("tpAmount") && $("tpAmount").value) || "").trim());
+      if (isFinite(v) && v > 0) $("tpGet").value = tpFmtAmt(swSide === "xno" ? v * price : v / price, co.get);
+      else $("tpGet").value = "";
+    }
   } finally { tpSyncing = false; }
 }
 function tpCoinLabels() { const co = tpCoins(); if ($("tpPayCoin")) $("tpPayCoin").textContent = co.pay; if ($("tpGetCoin")) $("tpGetCoin").textContent = co.get; }
