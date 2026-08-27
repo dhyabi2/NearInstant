@@ -21,6 +21,13 @@
 "use strict";
 (function () {
   const THRESH = { send: 0xfffffff800000000n, receive: 0xfffffe0000000000n };
+  // Discovery-account rotation period, seconds. Makers post offers to the
+  // account for the CURRENT epoch and scanners read a window of epochs, so each
+  // account only ever holds one epoch of churn (bounded forever). MUST exceed
+  // the offer TTL (currently 600 s) by enough that a live offer never spans more
+  // than one epoch boundary — 1800 s (30 min) gives a 3x margin, and the +/-1
+  // epoch read window also absorbs up to ~30 min of maker/taker clock skew.
+  const BEACON_EPOCH_SECS = 1800;
 
   function hex(u8) {
     return Array.from(u8).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -237,30 +244,41 @@
       // Scan a market side for live order intents. Junk and wrong-side
       // entries are dropped by the codec, duplicates by block hash.
       async scan(urls, pair, side) {
-        const account = wasm.beacon_address(pair, side);
-        // The beacon namespace account is shared and its sentinels are never
-        // pocketed, so every post/reprice/repost piles up on it. `count:"100"`
-        // returns an arbitrary/oldest 100 that can EXCLUDE the current live
-        // offer entirely (one churny maker then hides the whole book). count:"0"
-        // means NONE on some nodes, so request a high explicit count to pull the
-        // full set — scanLive's newest-per-maker then always sees the latest.
-        const j = await rpc(urls, {
-          action: "receivable", account, count: "10000", threshold: "1", source: "true",
-        }, fetchFn);
-        const blocks = j && j.blocks && typeof j.blocks === "object" ? j.blocks : {};
+        // SCALABILITY: the discovery account is a SHARED account whose offer
+        // sentinels are never pocketed, so posting to a single fixed account
+        // accumulates every post/reprice/repost forever — eventually a fixed
+        // read count can no longer surface the current offer (one churny maker
+        // hides the whole book). Instead the account ROTATES on a time epoch:
+        // makers post to the current epoch's account, and scanners read a small
+        // window of epochs. Each epoch account only ever holds ONE epoch of
+        // churn and older epochs are abandoned, so the working set is bounded no
+        // matter how many years the DEX runs. We read the previous/current/next
+        // epoch (previous covers an offer still within TTL across a boundary,
+        // next tolerates mild maker/taker clock skew), plus the LEGACY non-epoch
+        // account as a migration bridge for makers that have not upgraded.
+        const nowS = Math.floor(Date.now() / 1000);
+        const e = Math.floor(nowS / BEACON_EPOCH_SECS);
+        const nsPairs = [pair, pair + "@e" + (e - 1), pair + "@e" + e, pair + "@e" + (e + 1)];
         const out = [], seen = new Set();
-        for (const [blockHash, entry] of Object.entries(blocks)) {
-          if (seen.has(blockHash)) continue;
-          seen.add(blockHash);
-          const amount = typeof entry === "object" ? entry.amount : entry;
-          const dec = wasm.beacon_decode(String(amount));
-          if (!dec) continue;
-          const intent = JSON.parse(dec);
-          if (intent.side !== side) continue;
-          out.push({
-            maker: typeof entry === "object" ? entry.source : null,
-            intent, blockHash,
-          });
+        for (const np of nsPairs) {
+          const account = wasm.beacon_address(np, side);
+          let blocks = {};
+          try {
+            const j = await rpc(urls, {
+              action: "receivable", account, count: "10000", threshold: "1", source: "true",
+            }, fetchFn);
+            blocks = j && j.blocks && typeof j.blocks === "object" ? j.blocks : {};
+          } catch (e2) { continue; }   // one namespace unreachable: others still count
+          for (const [blockHash, entry] of Object.entries(blocks)) {
+            if (seen.has(blockHash)) continue;
+            seen.add(blockHash);
+            const amount = typeof entry === "object" ? entry.amount : entry;
+            const dec = wasm.beacon_decode(String(amount));
+            if (!dec) continue;
+            const intent = JSON.parse(dec);
+            if (intent.side !== side) continue;
+            out.push({ maker: typeof entry === "object" ? entry.source : null, intent, blockHash });
+          }
         }
         return out;
       },
@@ -338,7 +356,10 @@
         }
         const amount = BigInt(amountStr);
         if (st.balance <= amount) throw new Error("balance too low to publish");
-        const nsAccount = hex(wasm.beacon_account(pair, intent.side));
+        // Post to the CURRENT epoch's rotating discovery account (see scan) so
+        // sentinels never accumulate on one account without bound.
+        const nsPair = pair + "@e" + Math.floor(Math.floor(Date.now() / 1000) / BEACON_EPOCH_SECS);
+        const nsAccount = hex(wasm.beacon_account(nsPair, intent.side));
         const signed = wasm.sign_state_block(
           seedHex, st.frontier, st.rep, (st.balance - amount).toString(), nsAccount, "send");
         if (!signed) throw new Error("could not sign beacon block");
