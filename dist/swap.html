@@ -3181,11 +3181,29 @@ function swViableMid(side) { return side === 0 ? swLastMid * (1 - SW_ORACLE_TOL)
 // independently, so we compute at our OWN mid and add a +50% margin: better to
 // ask for a bit more than to bounce off a sub-minimum decline. Returns a BigInt
 // raw, or null only if the offer cannot price at any size even favourably.
+// The raw minimum is fee / (margin - 30bps): with a thin margin the denominator
+// is tiny, so normal per-refresh oracle jitter (±0.1-0.2% mid) swings it 2-3x —
+// the "minimum keeps jumping" volatility. Damp it with a per-offer STICKY
+// RATCHET (both sides — the math is identical): the shown minimum may RISE
+// instantly (a higher floor is always safe — it can only prevent declines) but
+// drifts DOWN slowly (2%/refresh), so jitter can't bounce it around. Keyed by
+// offer block: a repriced offer starts fresh.
+const __swMinCache = new Map();   // block -> { v: BigInt, at }
 function swMinViableRaw(priceE9, side) {
   const TP = window.XnoxmrTwoParty; if (!TP || !swLastMid) return null;
   let m = TP.minViableXnoRaw(priceE9, side === 0, swLastMid, null, CERT.MIN_ACCEPT_BPS);
   if (m === null) m = TP.minViableXnoRaw(priceE9, side === 0, swViableMid(side), null, CERT.MIN_ACCEPT_BPS);
-  return m === null ? null : (BigInt(m) * 3n) / 2n;
+  if (m === null) return null;
+  let v = (BigInt(m) * 3n) / 2n;
+  const key = swSelected ? String(swSelected.blockHash).toLowerCase() : "none";
+  const c = __swMinCache.get(key);
+  if (c && Date.now() - c.at < 10 * 60 * 1000) {
+    if (v > c.v) { /* rise immediately */ }
+    else { const floor = (c.v * 98n) / 100n; if (v < floor) v = floor; }   // decay ≤2% per refresh
+  }
+  __swMinCache.set(key, { v, at: Date.now() });
+  if (__swMinCache.size > 50) { const k0 = __swMinCache.keys().next().value; __swMinCache.delete(k0); }
+  return v;
 }
 const raw2 = (raw, scale) => { const t = BigInt(raw).toString().padStart(scale + 1, "0"); return ((t.slice(0, -scale) + "." + t.slice(-scale)).replace(/0+$/, "").replace(/\.$/, "")) || "0"; };
 let tpPending = null;
