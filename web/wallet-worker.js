@@ -14,17 +14,23 @@ let address = null; // nano_ address
 let wasm = null;    // wasm-bridge (Nano)
 let xmr = null;     // wasm-monero (Monero), loaded on demand
 
+// Version the engine imports with the SAME ?v the page gave this worker.
+// Without it the browser can cache an old glue JS against a new .wasm binary
+// (or vice versa) across deploys — init then throws and everything Monero
+// reads "unavailable" until a hard refresh. Passing the versioned binary URL
+// into default() versions the .wasm fetch too.
+const ENGINE_V = (self.location && self.location.search) || "";
 async function ensureWasm() {
   if (wasm) return wasm;
-  const m = await import("./pkg/wasm_bridge.js");
-  await m.default();
+  const m = await import("./pkg/wasm_bridge.js" + ENGINE_V);
+  await m.default("./pkg/wasm_bridge_bg.wasm" + ENGINE_V);
   wasm = m;
   return wasm;
 }
 async function ensureXmr() {
   if (xmr) return xmr;
-  const m = await import("./pkg-xmr/wasm_monero.js");
-  await m.default();
+  const m = await import("./pkg-xmr/wasm_monero.js" + ENGINE_V);
+  await m.default("./pkg-xmr/wasm_monero_bg.wasm" + ENGINE_V);
   xmr = m;
   return xmr;
 }

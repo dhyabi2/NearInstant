@@ -1825,8 +1825,8 @@ function expScript(src) {
 async function expInit() {
   if (expWasm) return;
   try {
-    const mod = await import("./pkg/wasm_bridge.js");
-    await mod.default();
+    const mod = await import("./pkg/wasm_bridge.js?v=" + ASSET_V);
+    await mod.default("./pkg/wasm_bridge_bg.wasm?v=" + ASSET_V);
     if (!window.XnoxmrMailbox) await expScript("mailbox.js");
     if (!window.XnoxmrBeacon) await expScript("beacon.js");
     if (!window.XnoxmrLedgerRelay) await expScript("ledger_relay.js").catch(() => {});
@@ -1869,8 +1869,8 @@ async function walletBoot() {
   if (walletApi) return walletApi;
   if (walletBooting) return walletBooting;
   walletBooting = (async () => {
-    const mod = await import("./pkg/wasm_bridge.js");
-    await mod.default();
+    const mod = await import("./pkg/wasm_bridge.js?v=" + ASSET_V);
+    await mod.default("./pkg/wasm_bridge_bg.wasm?v=" + ASSET_V);
     walletWasm = mod;
     if (!window.XnoxmrBeacon) await expScript("beacon.js");
     if (!window.XnoxmrWallet) await expScript("wallet.js");
@@ -2230,7 +2230,7 @@ const USE_GUARD_LADDER = (() => {
 async function swapEnsure() {
   await walletBoot();
   if (!window.XnoxmrFundedSwap) await expScript("funded_swap.js");
-  if (!swapXmr) { const m = await import("./pkg-xmr/wasm_monero.js"); await m.default(); swapXmr = m; }
+  if (!swapXmr) { const m = await import("./pkg-xmr/wasm_monero.js?v=" + ASSET_V); await m.default("./pkg-xmr/wasm_monero_bg.wasm?v=" + ASSET_V); swapXmr = m; }
   return window.XnoxmrBeacon.makeBeacon(walletWasm, {});
 }
 function swapMoneroPost() {
