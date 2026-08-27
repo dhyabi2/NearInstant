@@ -3039,6 +3039,11 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
   const store = tpStore(sessionId);
   const rand = (n) => { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; };
   hs.wire.pollMs = 3000;
+  // Give the live 2-of-2 claim/refund co-sign room to absorb the other side's
+  // on-chain confirmation wait before the wire recv gives up (was 120 s, which
+  // could time the claim co-sign out while the counterparty was still
+  // confirming the joint open). If it still can't co-sign, runA refunds.
+  hs.wire.timeoutMs = 240000;
   // Route the RECEIVED coin to the taker's external address (never the in-page
   // wallet): role A receives XMR → sweep dest; role B receives XNO → claim dest
   // (via myWalletAcct, which both parties co-sign the claim block to).

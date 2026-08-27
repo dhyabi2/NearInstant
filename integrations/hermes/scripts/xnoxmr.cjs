@@ -747,7 +747,7 @@ async function settleTake(seed, offer, take, note) {
   const rand = (n) => { const b = new Uint8Array(n); require("crypto").webcrypto.getRandomValues(b); return b; };
   const relay = relayFor(seed);
   const d = await MB.derive(Buffer.from(take.shared, "hex"), false);
-  const wire = new MB.MailboxWire([relay], d.send, d.recv, d.key); wire.pollMs = 3000;
+  const wire = new MB.MailboxWire([relay], d.send, d.recv, d.key); wire.pollMs = 3000; wire.timeoutMs = 240000;
   const sessionId = offer.block + "-M";
   const store = fileStore(sessionId);
   const roleIsA = offer.side === 0;

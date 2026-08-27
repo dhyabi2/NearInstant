@@ -839,7 +839,24 @@
         deps.note("refunded instead of committing: " + c.reason);
         return { done: true, refunded: true, reason: c.reason };
       }
-      const pre0 = await adaptorPresignRole(party, claimHash);
+      // The claim is co-signed with the counterparty over the wire (a live
+      // 2-of-2 round). If they are not there to co-sign — offline, their
+      // settlement died, or they reached this step outside our wire window — we
+      // MUST NOT strand our funded XNO waiting forever. Take the unilateral
+      // refund we already hold: it returns our XNO and, being an adaptor
+      // signature, publishes our Monero share so the counterparty recovers its
+      // lock too. Nobody loses more than network fees. (The claim/refund race on
+      // the single joint-account successor is safe either way: if their claim
+      // somehow lands first, our refund is rejected and a resume extracts x.)
+      let pre0;
+      try { pre0 = await adaptorPresignRole(party, claimHash); }
+      catch (e) {
+        deps.note("could not co-sign the claim with the counterparty (" + (e && e.message || e) + ") — taking your refund so your XNO comes back…");
+        const r = await broadcastRefund(deps, party, open.hash, S.get("refund"));
+        S.set("refunded", Object.assign(r, { reason: "claim co-sign unavailable" }));
+        deps.note("refunded — your XNO is back. The other side recovers its XMR from the refund; nothing is lost but fees.");
+        return { done: true, refunded: true, reason: "claim co-sign unavailable" };
+      }
       S.set("presigned", { at: Date.now(), pre: hx(pre0) });
     }
     let preHex = (S.get("presigned") || {}).pre;
