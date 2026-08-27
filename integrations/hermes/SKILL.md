@@ -381,6 +381,13 @@ elapses, and the offer stays live for the next taker. A stale `.lock` from a
 killed tick is also cleared automatically on the next tick (the holder PID is
 liveness-checked), so a crash no longer blocks the loop.
 
+**Recovery is fast and self-concluding now:** a recovery locates your lock by
+resolving its persisted tx hash to an exact block (one daemon call) instead of
+scanning thousands of blocks, and a session where nothing was ever actually
+locked (or whose lock is provably absent on-chain after a bounded 10-minute
+hunt) **closes itself out** with "nothing to recover" — expect such sessions to
+finish and disappear from `settle --list` on their own.
+
 **If your XMR is locked but the swap stalled** (the taker's ceremony wire dropped
 after your lock confirmed): there is nothing to abandon and nothing more to do
 proactively — the claim needs the taker's co-signature, which is gone. Just keep
