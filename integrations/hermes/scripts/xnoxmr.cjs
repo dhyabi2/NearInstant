@@ -172,9 +172,28 @@ function stLoad() { try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"))
 function stSave(o) { fs.writeFileSync(STATE_FILE, JSON.stringify(o, null, 1)); try { fs.chmodSync(STATE_FILE, 0o600); } catch (e) {} }
 // One tick at a time. A stale lock (>10 min, a crashed tick) is reclaimed.
 function lockAcquire() {
-  try { const st = fs.statSync(LOCK_FILE); if (Date.now() - st.mtimeMs < 10 * 60 * 1000) return false; fs.unlinkSync(LOCK_FILE); } catch (e) {}
+  try {
+    const st = fs.statSync(LOCK_FILE);
+    // A lock left by a process that is no longer alive is stale no matter how
+    // fresh its mtime — a killed tick (SIGKILL, OOM, container stop) can never
+    // release it, and waiting out the 10-min age fallback needlessly blocks
+    // every tick in between (filed 50739e9d1791). Reclaim immediately if the
+    // recorded PID is dead; otherwise keep the age guard for a genuinely live
+    // (or foreign/unreadable) holder.
+    let alive = false;
+    try {
+      const pid = parseInt(fs.readFileSync(LOCK_FILE, "utf8").trim(), 10);
+      if (pid > 0) { try { process.kill(pid, 0); alive = true; } catch (e) { alive = !!(e && e.code === "EPERM"); } }
+    } catch (e) {}
+    if (alive && Date.now() - st.mtimeMs < 10 * 60 * 1000) return false;
+    fs.unlinkSync(LOCK_FILE);
+  } catch (e) {}
   try { fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" }); return true; } catch (e) { return false; }
 }
+// On-chain-fund markers persisted per session. Their presence means an
+// irreversible step happened, so such a session must be RESUMED (complete /
+// refund / recover), never abandoned. Absence means setup only — safe to drop.
+const MOVED_KEYS = ["open", "fund", "lock", "lockseen", "refund", "x", "claim", "sweep"];
 function lockRelease() { try { fs.unlinkSync(LOCK_FILE); } catch (e) {} }
 const LR = require(path.join(ROOT, "web/ledger_relay.js"));
 const MB = require(path.join(ROOT, "web/mailbox.js"));
@@ -768,7 +787,33 @@ const AUTOSETTLE = env("XNOXMR_AUTOSETTLE", "1") !== "0";
 // vanished-taker hang that would otherwise freeze the offer until a restart.
 const FUND_WAIT_MS = Math.max(30000, parseInt(env("XNOXMR_FUND_WAIT_MS", "300000"), 10) || 300000);
 
-CMDS.settle = async () => {
+CMDS.settle = async (args) => {
+  args = args || {};
+  // Operator tools (work regardless of the autosettle flag):
+  //   settle --list                list in-flight settlement sessions
+  //   settle --abandon <session>   drop a session that never moved funds
+  if (args.list) {
+    const files = fs.existsSync(STATE_DIR) ? fs.readdirSync(STATE_DIR).filter((f) => f.startsWith("sess_") && f.endsWith(".json")) : [];
+    const sessions = files.map((f) => {
+      let o = {}; try { o = JSON.parse(fs.readFileSync(path.join(STATE_DIR, f), "utf8")); } catch (e) {}
+      const sid = f.replace(/^sess_/, "").replace(/\.json$/, "");
+      const moved = MOVED_KEYS.filter((k) => o[k]);
+      return { session: sid, done: !!(o.done), roleIsA: o.party ? !!o.party.roleIsA : null, movedFunds: moved, abandonable: !o.done && moved.length === 0 };
+    });
+    return out({ ok: true, sessions });
+  }
+  if (args.abandon) {
+    const sid = String(args.abandon);
+    const f = path.join(STATE_DIR, "sess_" + sid.replace(/[^0-9a-zA-Z_-]/g, "").slice(0, 40) + ".json");
+    if (!fs.existsSync(f)) return die("no such session: " + sid, { hint: "run `settle --list` to see sessions" });
+    let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) {}
+    if (o.done) return out({ ok: true, session: sid, note: "session was already finished/abandoned — nothing to do" });
+    const moved = MOVED_KEYS.filter((k) => o[k]);
+    if (moved.length) return die("refusing to abandon: funds moved on this session (" + moved.join(", ") + ")",
+      { hint: "resume it instead — `tick --live` auto-resumes to complete, refund, or recover. Only abandon sessions where nothing moved." });
+    fileStore(sid).set("done", { at: Date.now(), result: { abandoned: true, reason: "operator abandon" } });
+    return out({ ok: true, abandoned: sid, note: "session marked abandoned (nothing had moved on-chain); it will no longer auto-resume or hold your offer" });
+  }
   if (!AUTOSETTLE) { out({
     ok: false,
     refused: "autonomous settlement is DISABLED (you set XNOXMR_AUTOSETTLE=0). Unset it to re-enable — it is ON by default.",
@@ -875,11 +920,12 @@ CMDS.help = async () => out({
     watch: "--side 0|1 [--size xno] --live   REALTIME maker: tick + Nano-websocket watch on the rendezvous, accepts takes instantly; fallback tick every XNOXMR_TICK_MS (180s)",
     "xmr balance": "read-only spendable/total XMR + scan height (side-1 makers)",
     "xmr scan": "[--max-blocks N]   advance the Monero scan to catch up (cron this for side 1)",
-    settle: "REFUSED - explains why, and what to do instead",
+    settle: "autosettle status. Operator: `settle --list` shows in-flight sessions; `settle --abandon <session>` drops a setup-only session that never moved funds (refuses if it did — resume instead).",
   },
   env: { XNOXMR_MAKER_SEED: "maker wallet seed (else WALLET_A_SEED from .env)",
          XNOXMR_WORK_URL: "PoW proxy base, default https://www.nearinstant.xyz",
-         XNOXMR_NANO_NODES: "comma-separated Nano RPC nodes" },
+         XNOXMR_NANO_NODES: "comma-separated Nano RPC nodes",
+         XNOXMR_FUND_WAIT_MS: "how long the maker waits for a taker's XNO before abandoning cleanly (default 300000)" },
 });
 
 // ---- arg parsing -----------------------------------------------------------
