@@ -403,6 +403,7 @@ has `lock` set and will refuse anyway).
 | `XNOXMR_XMR_LIQUIDITY` | XMR you can fund for **side-1** offers (else side 1 refuses to post) |
 | `XNOXMR_NANO_WS` | Nano websocket for `watch` (default `wss://ws.nano.to`) |
 | `XNOXMR_TICK_MS` | `watch` fallback tick interval, ms (default 180000) |
+| `XNOXMR_PRICEHIST` | file for the rolling price history behind the volatility quote and pump/dump stress guards (default alongside the state file) |
 | `XNOXMR_TICK_TIMEOUT_MS` | `watch` stuck-tick guard release, ms (default 900000) |
 | `XNOXMR_NANO_RPC_KEY` | nano.to API key — sent to rpc.nano.to (header + body) and ws.nano.to (`?key=`) |
 | `XNOXMR_FUND_WAIT_MS` | how long a settlement waits for the taker's XNO before abandoning cleanly (default 300000; min 30000) |
