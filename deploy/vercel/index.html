@@ -1829,7 +1829,7 @@ $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b
 let expWasm = null, expBeacon = null;
 // Bump on every deploy so browsers fetch fresh scripts + worker instead of a
 // stale cached copy (workers cache especially aggressively).
-const ASSET_V = "9b8f42ce0ba5";
+const ASSET_V = "e08ecac84e10";
 function expScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement("script");
