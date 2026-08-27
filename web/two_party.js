@@ -491,22 +491,28 @@
     const spendPub = hb(party.jointMonero.spend_pub), viewKey = hb(party.jointMonero.view_key);
     const want = raw2dec(minAtomic, 12);
     let round = 0;
+    // Once the lock output is FOUND we cache it and only re-check its depth
+    // against the growing tip — we do NOT re-scan the window every round just to
+    // re-discover a block we already know (that was pure wasted work while
+    // waiting out the ~10 confirmations).
+    let hit = null;
     for (;;) {
       const tip = await node.height();
-      const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - (defaultLookback || 120));
-      const total = Math.max(1, tip - from0);
-      let hit = null;
-      for (let from = from0; from <= tip - 1 && !hit; from += 10) {
-        const to = Math.min(from + 9, tip - 1);
-        const pct = Math.min(100, Math.round((to - from0) / total * 100));
-        deps.note(`Monero: scanning blocks ${from.toLocaleString()}–${to.toLocaleString()} for the ${want} XMR lock (chain at ${tip.toLocaleString()}) · ${pct}%`);
-        const outs = JSON.parse(await node.scan_all(spendPub, viewKey, from, to, null));
-        for (const o of outs) if (BigInt(o.amount) >= BigInt(minAtomic)) { hit = o; break; }
+      if (!hit) {
+        const from0 = sinceHeight ? Math.max(0, sinceHeight - 5) : Math.max(0, tip - (defaultLookback || 120));
+        const total = Math.max(1, tip - from0);
+        for (let from = from0; from <= tip - 1 && !hit; from += 10) {
+          const to = Math.min(from + 9, tip - 1);
+          const pct = Math.min(100, Math.round((to - from0) / total * 100));
+          deps.note(`Monero: scanning blocks ${from.toLocaleString()}–${to.toLocaleString()} for the ${want} XMR lock (chain at ${tip.toLocaleString()}) · ${pct}%`);
+          const outs = JSON.parse(await node.scan_all(spendPub, viewKey, from, to, null));
+          for (const o of outs) if (BigInt(o.amount) >= BigInt(minAtomic)) { hit = o; break; }
+        }
       }
       if (hit && tip - hit.block >= XMR_CONF) { deps.note(`Monero: lock of ${raw2dec(hit.amount, 12)} XMR confirmed ✓ (block ${hit.block.toLocaleString()}, ${tip - hit.block} confirmations)`); return { hit, tip }; }
       if (hit) {
-        const conf = tip - hit.block, mins = Math.max(1, (XMR_CONF - conf) * 2);
-        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${XMR_CONF} confirmations · ~${mins} min left · checking again in 45 s (safe to wait)`);
+        const conf = Math.max(0, tip - hit.block), mins = Math.max(1, (XMR_CONF - conf) * 2);
+        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${XMR_CONF} confirmations · ~${mins} min left · waiting for confirmations (no re-scan) · checking again in 45 s`);
       } else {
         round++;
         deps.note(`Monero: no ${want} XMR lock on the joint address yet (chain at ${tip.toLocaleString()}) · the other side may still be sending · re-scanning in 45 s (check ${round})`);
