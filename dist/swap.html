@@ -1814,7 +1814,7 @@ $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b
 let expWasm = null, expBeacon = null;
 // Bump on every deploy so browsers fetch fresh scripts + worker instead of a
 // stale cached copy (workers cache especially aggressively).
-const ASSET_V = "64fc9a1c7864";
+const ASSET_V = "79445a718e41";
 function expScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement("script");
@@ -3121,9 +3121,25 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
     // still required, so we only ever lock funds when we can actually see the
     // market. Downstream gates then enforce the unrealised-loss/stress limits.
     const price = await certPrice().catch((e) => ({ ok: false, reason: String(e && e.message || e) }));
+    // ONE AGREED MID (block 2): when the maker attested its mid in the SIGNED
+    // accept, adopt it as the shared baseline — both sides then measure drift
+    // against the SAME number, so independent oracles can never disagree the
+    // swap to death mid-flight. We still sanity-band the attested mid against
+    // our own oracle (±1.5%): a maker quoting an off-market reference is
+    // rejected, and if our own oracle is down we fail closed (an attested
+    // number we cannot check is not a market view).
+    if (hs.agreedMid && price.ok) {
+      const dev = Math.abs(hs.agreedMid - price.mid) / price.mid;
+      if (dev > 0.015) throw new Error("the maker's signed price reference is " + (dev * 100).toFixed(2) + "% away from the market this page can see — refusing to settle on it. Nothing moved; try again or pick another offer.");
+      const c = TP.certify(deal, roleIsA, { ok: true, mid: hs.agreedMid, sources: price.sources, at: Date.now(), stress: price.stress || 1 }, { minBps: -1e9, maxAgeMs: CERT.MAX_MID_AGE_MS, maxStress: CERT_MAX_STRESS });
+      if (!c || !c.ok) throw new Error("refusing to settle: " + ((c && c.reason) || "could not certify at the agreed mid") + ". Nothing moved.");
+      tpLog("price baseline agreed ✓ — both sides measure against the maker's signed mid " + hs.agreedMid.toFixed(9) + " (within " + (dev * 100).toFixed(2) + "% of this page's own reading)");
+      store.set("acceptCert", c);
+    } else {
     const c = TP.certify(deal, roleIsA, price, { minBps: -1e9, maxAgeMs: CERT.MAX_MID_AGE_MS, maxStress: CERT_MAX_STRESS });
     if (!c || !c.ok) throw new Error("refusing to settle: can't certify the market right now (" + ((c && c.reason) || "oracle unavailable") + "). Your funds are NOT locked — nothing moved. Try again in a moment.");
     store.set("acceptCert", c);
+    }
   }
   const result = await (roleIsA ? TP.runA : TP.runB)(tpDeps(store, note, xmrDest), party) || {};
   store.set("done", { at: Date.now(), result });
