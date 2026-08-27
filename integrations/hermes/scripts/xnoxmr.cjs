@@ -24,7 +24,7 @@ const RAW = 10n ** 30n;
 const env = (k, d) => (process.env[k] && process.env[k].trim()) || d;
 const WORK_URL = env("XNOXMR_WORK_URL", "https://www.nearinstant.xyz");
 const NANO_NODES = env("XNOXMR_NANO_NODES",
-  "https://rpc.nano-gpt.com,https://rainstorm.city/api,https://node.somenano.com/proxy")
+  "https://node.somenano.com/proxy,https://nanoslo.0x.no/proxy,https://rpc.nano.to,https://rpc.nano-gpt.com,https://rainstorm.city/api")
   .split(",").map(s => s.trim()).filter(Boolean);
 
 const TP = require(path.join(ROOT, "web/two_party.js"));   // certify() - the same code the app gates on
