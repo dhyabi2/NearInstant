@@ -706,7 +706,7 @@ CMDS.tick = async (args) => {
             act("⚡ instant tier offered: releasing after " + INSTANT_CONFS + " confs (net " + r.cert.netBps + " bps ≥ " + (MIN_ACCEPT_BPS + INSTANT_EXTRA_BPS) + " bps premium floor, " + dealXno.toFixed(2) + " ≤ " + INSTANT_MAX_XNO + " XNO cap)");
           }
         }
-        const hs = await TP.makerPollTake(MB, relayFor(seed), ctx.block, ctx.intent, maxXnoRawOf(ctx.intent), cf, authSign, instantOffer);
+        const hs = await TP.makerPollTake(MB, relayFor(seed), ctx.block, ctx.intent, maxXnoRawOf(ctx.intent), cf, authSign, instantOffer, Math.round(price.mid * 1e9));
         if (hs && hs.deal && hs.shared) {
           const offerSnap = ctx;
           const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot, instant: hs.instant }, note);

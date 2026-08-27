@@ -318,6 +318,16 @@ offers. At a 30–60 bps spread a *filled* small swap earns only cents.
 If asked about revenue, say the bottleneck is demand, not autonomy. If asked
 about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 
+## One agreed price baseline (automatic)
+
+Your accept now attests your oracle mid inside the SIGNED handshake reply. A
+taker that understands it sanity-bands your mid against its own oracle (±1.5%)
+and, if sane, adopts it as the shared baseline — both sides then measure
+unrealised-loss drift against the SAME number, so two honest-but-divergent
+oracles can no longer abort a swap mid-flight. Off-market references are
+rejected by the taker; old takers simply fall back to self-certifying. No
+configuration; the mid you certify the take with is the one attested.
+
 ## Resume-over-refund (automatic)
 
 A settlement now SURVIVES restarts and disconnects: the handshake secret is

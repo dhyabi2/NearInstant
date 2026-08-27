@@ -218,17 +218,25 @@
   // signature to BOTH the offer hash and the fresh ECDH pub means a signature is
   // useless on any other offer or with any other key, so a slot-squatting MITM
   // cannot substitute its own ECDH pub: it can't sign as the offer's account.
-  async function authMsg(offerHash, pubBytes, instantConfs) {
-    // v1: offerHash || ephemeral pub.  v2 (instant tier): the maker ALSO signs
-    // the early-release confirmation count, so the tier cannot be added,
-    // stripped, or altered in transit — only the account that posted the offer
-    // can promise an early release.
-    const ctx = new TextEncoder().encode(instantConfs != null ? "xnoxmr-rv-auth-v2:" : "xnoxmr-rv-auth-v1:");
+  async function authMsg(offerHash, pubBytes, instantConfs, midE9) {
+    // v1: offerHash || ephemeral pub.
+    // v2 (instant tier): + the early-release confirmation count.
+    // v3 (agreed mid): + confs byte (0 = standard tier) + the maker's accept-
+    //     time mid as a u64-LE of mid*1e9 — so the price reference BOTH sides
+    //     will measure drift against is signed by the offer's account and can
+    //     never be forged, stripped, or altered in transit.
+    const v3 = midE9 != null;
+    const ctx = new TextEncoder().encode(v3 ? "xnoxmr-rv-auth-v3:" : (instantConfs != null ? "xnoxmr-rv-auth-v2:" : "xnoxmr-rv-auth-v1:"));
     const oh = hb(String(offerHash).toLowerCase());
-    const extra = instantConfs != null ? 1 : 0;
+    const extra = v3 ? 9 : (instantConfs != null ? 1 : 0);
     const buf = new Uint8Array(ctx.length + oh.length + pubBytes.length + extra);
     buf.set(ctx, 0); buf.set(oh, ctx.length); buf.set(pubBytes, ctx.length + oh.length);
-    if (extra) buf[buf.length - 1] = instantConfs & 0xff;
+    if (v3) {
+      let off = buf.length - 9;
+      buf[off++] = (instantConfs || 0) & 0xff;
+      let m = BigInt(midE9);
+      for (let i = 0; i < 8; i++) { buf[off + i] = Number(m & 0xffn); m >>= 8n; }
+    } else if (instantConfs != null) buf[buf.length - 1] = instantConfs & 0xff;
     return new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
   }
 
@@ -303,7 +311,7 @@
       if (!(await relay.fetch(rvBox(offer.blockHash), i))) { slot = i; break; }
     }
     if (slot < 0) throw new Error("this offer's rendezvous is full — try another offer");
-    await relay.post(rvBox(offer.blockHash), slot, jsonBytes({ v: 1, pub: hx(pub), deal, iok: 1 }));  // iok: this taker understands the instant tier
+    await relay.post(rvBox(offer.blockHash), slot, jsonBytes({ v: 1, pub: hx(pub), deal, iok: 1, mok: 1 }));  // iok: this taker understands the instant tier
     if (onProgress) onProgress("waiting for the maker to accept… the maker must be online and accepting (times out in 10 min)");
     let resp = null;
     const deadline = Date.now() + 10 * 60 * 1000, start = Date.now();
@@ -336,7 +344,16 @@
       let instant = null;
       if (rj.instant && Number.isInteger(rj.instant.confs) && rj.instant.confs >= 1 && rj.instant.confs <= 9) instant = { confs: rj.instant.confs };
       else if (rj.instant) { throw new Error("maker sent a malformed instant tier — rejecting the accept"); }
-      try { good = rj.sig ? await authVerify(await authMsg(offer.blockHash, hb(rj.pub), instant ? instant.confs : null), hb(rj.sig)) : false; } catch (e) { good = false; }
+      // AGREED MID: the maker may attest its accept-time mid (mid*1e9). Both
+      // sides then measure drift against the SAME number, so their independent
+      // oracles can never disagree the swap to death. Bound into the signature
+      // (v3); the CALLER must still sanity-band it against its own oracle.
+      let agreedMidE9 = null;
+      if (rj.mid != null) {
+        if (!Number.isInteger(rj.mid) || rj.mid < 100 || rj.mid > 1e12) throw new Error("maker sent a malformed price reference — rejecting the accept");
+        agreedMidE9 = rj.mid;
+      }
+      try { good = rj.sig ? await authVerify(await authMsg(offer.blockHash, hb(rj.pub), instant ? instant.confs : null, agreedMidE9), hb(rj.sig)) : false; } catch (e) { good = false; }
       if (!good) throw new Error("maker identity could not be verified (the accept was not signed by the account that posted this offer — possible interference). Your funds were NOT locked; nothing moved. Try the offer again.");
     }
     const shared = await ecdhShared(kp, hb(rj.pub));
@@ -345,7 +362,7 @@
     // wire after a crash: the AES key inside the wire is non-extractable, so
     // without the shared secret a restarted process could never talk to its
     // peer again. Only the two parties can know it; store it like a seed.
-    return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), makerPub: rj.pub, shared: hx(shared), slot, instant };
+    return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), makerPub: rj.pub, shared: hx(shared), slot, instant, agreedMid: agreedMidE9 != null ? agreedMidE9 / 1e9 : null };
   }
 
   // Maker: check the rendezvous for a take-request on my live offer. If one is
@@ -356,7 +373,7 @@
   // market is declined before we reply - the posted price may be minutes old.
   // A decline is reported as {declined: reason} so the caller reprices instead
   // of treating it as junk.
-  async function makerPollTake(M, relay, offerHash, myIntent, maxXnoRaw, certifyFn, authSign, instantOffer) {
+  async function makerPollTake(M, relay, offerHash, myIntent, maxXnoRaw, certifyFn, authSign, instantOffer, midE9) {
     let sawJunk = false, declined = null;
     for (let slot = 0; slot < RV_SLOTS; slot++) {
       const req = await relay.fetch(rvBox(offerHash), slot);
@@ -383,12 +400,16 @@
       // Instant tier: only offered to a taker that advertised support (iok), so
       // an old taker never sees a v2 signature it cannot verify.
       const inst = (instantOffer && rj.iok && Number.isInteger(instantOffer.confs) && instantOffer.confs >= 1 && instantOffer.confs <= 9) ? { confs: instantOffer.confs } : null;
-      // Sign (offerHash || pub [|| confs]) so the taker can prove this reply —
-      // tier included — came from the account that posted the offer.
+      // Agreed mid: attested only to takers that understand it (mok), and only
+      // when signing is available — an unsigned mid would be worthless.
+      const attMid = (rj.mok && authSign && Number.isInteger(midE9) && midE9 > 0) ? midE9 : null;
+      // Sign (offerHash || pub [|| confs [|| mid]]) so the taker can prove this
+      // reply — tier and price reference included — came from the offer account.
       let sig = null;
-      if (authSign) { try { sig = await authSign(await authMsg(offerHash, pub, inst ? inst.confs : null)); } catch (e) { sig = null; } }
+      if (authSign) { try { sig = await authSign(await authMsg(offerHash, pub, inst ? inst.confs : null, attMid)); } catch (e) { sig = null; } }
       const reply = { v: 1, pub: hx(pub) };
       if (inst) reply.instant = inst;
+      if (attMid != null) reply.mid = attMid;
       if (sig && sig.length) reply.sig = hx(sig);
       await relay.post(rvRespBox(offerHash), slot, jsonBytes(reply));
       const shared = await ecdhShared(kp, hb(rj.pub));
