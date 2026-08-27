@@ -187,14 +187,21 @@ function makeHeadlessWallet(opts) {
     for (const o of spendable) { chosen.push(o); sum += BigInt(o.amount); if (sum >= amount + FEE_BASE + FEE_PER_INPUT * BigInt(chosen.length)) break; if (chosen.length >= MAX_INPUTS) break; }
     const need = amount + FEE_BASE + FEE_PER_INPUT * BigInt(Math.max(1, chosen.length));
     if (!chosen.length || sum < need) throw new Error(chosen.length >= MAX_INPUTS ? `balance split across too many small outputs (max ${MAX_INPUTS} per send)` : `not enough spendable XMR: need about ${fmtXmr(need)} including fee, ${fmtXmr(spendable.reduce((a, o) => a + BigInt(o.amount), 0n))} is unlocked and unspent`);
-    // PHASE 1 — build and sign EXACTLY ONCE (failing over here is safe: nothing broadcast yet)
+    // PHASE 1 — build and sign EXACTLY ONCE (failing over here is safe: nothing
+    // broadcast yet). TWO passes over the node list, like the browser wallet:
+    // public nodes fail transiently, and one round used to give up exactly when
+    // a 5 s-later retry would have succeeded.
     let signed = null, lastErr = "no Monero node answered";
-    for (const n of nodes) {
-      try { const node = await connect(n);
-        signed = JSON.parse(await node.send(JSON.stringify(chosen.map((o) => ({ output: o.output, block: o.block }))), hb(id.spend_secret), dest, amount.toString(), id.address, xmrNet)); break; }
-      catch (e) { lastErr = e && e.message || String(e); if (onProgress) onProgress(`build via ${n} failed: ${lastErr} → failover`); }
+    for (let round = 0; round < 2 && !signed; round++) {
+      if (round) { if (onProgress) onProgress("all nodes failed once — waiting 5 s and retrying the build (nothing was broadcast; safe)…"); await new Promise((r) => setTimeout(r, 5000)); }
+      for (const n of nodes) {
+        if (signed) break;
+        try { const node = await connect(n);
+          signed = JSON.parse(await node.send(JSON.stringify(chosen.map((o) => ({ output: o.output, block: o.block }))), hb(id.spend_secret), dest, amount.toString(), id.address, xmrNet)); }
+        catch (e) { lastErr = e && e.message || String(e); if (onProgress) onProgress(`build via ${n} failed: ${lastErr} → failover`); }
+      }
     }
-    if (!signed) throw new Error(lastErr);
+    if (!signed) throw new Error("could not build the transaction on any Monero node after two rounds (" + lastErr + ") — nothing was broadcast; funds untouched, safe to retry");
     // PHASE 2 — mark spent BEFORE broadcasting (a false positive hides an output until rescan; a false negative double-spends)
     for (const o of chosen) st.spent.push(o.index); saveSt(addr, st);
     if (onProgress) onProgress(`fee ${fmtXmr(BigInt(signed.fee || 0))} XMR (${signed.inputs} input${signed.inputs > 1 ? "s" : ""}) · broadcasting…`);
