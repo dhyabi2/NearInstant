@@ -282,6 +282,10 @@ about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 | `XNOXMR_NANO_NODES` | three public nodes, comma-separated |
 | `XNOXMR_STATE` | `.xnoxmr-agent.json` |
 | `XNOXMR_XMR_LIQUIDITY` | XMR you can fund for **side-1** offers (else side 1 refuses to post) |
+| `XNOXMR_NANO_WS` | Nano websocket for `watch` (default `wss://ws.nano.to`) |
+| `XNOXMR_TICK_MS` | `watch` fallback tick interval, ms (default 180000) |
+| `XNOXMR_TICK_TIMEOUT_MS` | `watch` stuck-tick guard release, ms (default 900000) |
+| `XNOXMR_NANO_RPC_KEY` | nano.to API key — sent to rpc.nano.to (header + body) and ws.nano.to (`?key=`) |
 
 ## Run fully self-hosted (local PoW & nodes)
 
