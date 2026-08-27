@@ -19,5 +19,5 @@ Cron the loop (Hermes `cron_mode: approve` for unattended runs):
 node /path/to/NearInstant/integrations/hermes/scripts/xnoxmr.cjs tick --side 1 --live
 ```
 
-It quotes, posts, monitors, re-certifies, declines losers, and reports a
-`HANDOFF` when a certified take appears. By default it **settles autonomously** — certified takes are settled inside `tick --live` (set `XNOXMR_AUTOSETTLE=0` to hand them to a human instead). See `SKILL.md`.
+It quotes, posts, monitors, re-certifies, declines losers, and settles
+certified takes. By default it **settles autonomously** — certified takes are settled inside `tick --live` (set `XNOXMR_AUTOSETTLE=0` to hand them to a human instead). See `SKILL.md`.
