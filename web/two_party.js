@@ -982,6 +982,27 @@
     return { hash: String(hash) };
   }
 
+  // A, ANY TIME: broadcast the pre-signed refund we already hold and get our
+  // XNO back. This is a UNILATERAL one-click exit — it needs no counterparty and
+  // no wire (broadcastRefund completes the refund with our OWN Monero share). It
+  // is the deliberate safety valve for the case the agent flagged: we funded
+  // XNO, saw the counterparty's XMR lock, but the claim can never be co-signed
+  // because their wire dropped. Taking the refund returns our XNO and, being an
+  // adaptor signature, publishes our Monero share so they recover their lock.
+  async function refundNow(deps, party) {
+    const S = deps.store;
+    if (!party.roleIsA) throw new Error("only the XNO funder holds a refund");
+    if (S.get("refunded")) return { done: true, refunded: true, already: true };
+    if (S.get("x") || S.get("sweep")) throw new Error("this swap already secured the XMR — no refund needed (resume to sweep instead)");
+    const open = S.get("open"), refund = S.get("refund");
+    if (!open || !refund) throw new Error("nothing to refund — no funded joint account/refund on record for this swap");
+    deps.note("broadcasting your pre-signed refund — returning your XNO (no counterparty needed)…");
+    const r = await broadcastRefund(deps, party, open.hash, refund);
+    S.set("refunded", Object.assign(r, { reason: "manual refund" }));
+    deps.note("refunded \u2713 \u2014 your XNO is back. The other side recovers its XMR from this refund automatically.");
+    return { done: true, refunded: true, reason: "manual refund" };
+  }
+
   // B: the counterparty took the refund instead of completing the swap. Extract
   // A_xmr from the on-chain refund signature and sweep the locked XMR back.
   async function recoverXmrFromRefund(deps, party, refund, refundSigHex) {
@@ -1004,7 +1025,7 @@
     ceremony, restore, jointSignRole, adaptorPresignRole,
     waitJointXmrLock, coSignOpen, coSignRefund, coSignRefundRole, buildBlock,
     coOpen, confirmedQuorum, runA, runB, raw2dec,
-    broadcastRefund, recoverXmrFromRefund, frontierSigIfMoved,
+    broadcastRefund, refundNow, recoverXmrFromRefund, frontierSigIfMoved,
     partyProfit, makerProfit, certify, gate, minViableXnoRaw,
     XMR_TX_FEE_ATOMIC_DEFAULT: XMR_TX_FEE_ATOMIC_DEFAULT.toString(),
     _hx: hx, _hb: hb,
