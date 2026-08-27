@@ -218,11 +218,17 @@
   // signature to BOTH the offer hash and the fresh ECDH pub means a signature is
   // useless on any other offer or with any other key, so a slot-squatting MITM
   // cannot substitute its own ECDH pub: it can't sign as the offer's account.
-  async function authMsg(offerHash, pubBytes) {
-    const ctx = new TextEncoder().encode("xnoxmr-rv-auth-v1:");
+  async function authMsg(offerHash, pubBytes, instantConfs) {
+    // v1: offerHash || ephemeral pub.  v2 (instant tier): the maker ALSO signs
+    // the early-release confirmation count, so the tier cannot be added,
+    // stripped, or altered in transit — only the account that posted the offer
+    // can promise an early release.
+    const ctx = new TextEncoder().encode(instantConfs != null ? "xnoxmr-rv-auth-v2:" : "xnoxmr-rv-auth-v1:");
     const oh = hb(String(offerHash).toLowerCase());
-    const buf = new Uint8Array(ctx.length + oh.length + pubBytes.length);
+    const extra = instantConfs != null ? 1 : 0;
+    const buf = new Uint8Array(ctx.length + oh.length + pubBytes.length + extra);
     buf.set(ctx, 0); buf.set(oh, ctx.length); buf.set(pubBytes, ctx.length + oh.length);
+    if (extra) buf[buf.length - 1] = instantConfs & 0xff;
     return new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
   }
 
@@ -246,7 +252,7 @@
       if (!(await relay.fetch(rvBox(offer.blockHash), i))) { slot = i; break; }
     }
     if (slot < 0) throw new Error("this offer's rendezvous is full — try another offer");
-    await relay.post(rvBox(offer.blockHash), slot, jsonBytes({ v: 1, pub: hx(pub), deal }));
+    await relay.post(rvBox(offer.blockHash), slot, jsonBytes({ v: 1, pub: hx(pub), deal, iok: 1 }));  // iok: this taker understands the instant tier
     if (onProgress) onProgress("waiting for the maker to accept… the maker must be online and accepting (times out in 10 min)");
     let resp = null;
     const deadline = Date.now() + 10 * 60 * 1000, start = Date.now();
@@ -272,7 +278,14 @@
     // omitted only by the protocol regression tests (no on-chain identity).
     if (authVerify) {
       let good = false;
-      try { good = rj.sig ? await authVerify(await authMsg(offer.blockHash, hb(rj.pub)), hb(rj.sig)) : false; } catch (e) { good = false; }
+      // Instant tier: the maker may promise to release early, after `confs`
+      // Monero confirmations instead of 10 — the MAKER carries the reorg risk
+      // beyond that depth (priced into its spread); the taker only gains. The
+      // count must be sane and is bound INTO the auth signature (v2).
+      let instant = null;
+      if (rj.instant && Number.isInteger(rj.instant.confs) && rj.instant.confs >= 1 && rj.instant.confs <= 9) instant = { confs: rj.instant.confs };
+      else if (rj.instant) { throw new Error("maker sent a malformed instant tier — rejecting the accept"); }
+      try { good = rj.sig ? await authVerify(await authMsg(offer.blockHash, hb(rj.pub), instant ? instant.confs : null), hb(rj.sig)) : false; } catch (e) { good = false; }
       if (!good) throw new Error("maker identity could not be verified (the accept was not signed by the account that posted this offer — possible interference). Your funds were NOT locked; nothing moved. Try the offer again.");
     }
     const shared = await ecdhShared(kp, hb(rj.pub));
@@ -281,7 +294,7 @@
     // wire after a crash: the AES key inside the wire is non-extractable, so
     // without the shared secret a restarted process could never talk to its
     // peer again. Only the two parties can know it; store it like a seed.
-    return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), makerPub: rj.pub, shared: hx(shared), slot };
+    return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), makerPub: rj.pub, shared: hx(shared), slot, instant };
   }
 
   // Maker: check the rendezvous for a take-request on my live offer. If one is
@@ -292,7 +305,7 @@
   // market is declined before we reply - the posted price may be minutes old.
   // A decline is reported as {declined: reason} so the caller reprices instead
   // of treating it as junk.
-  async function makerPollTake(M, relay, offerHash, myIntent, maxXnoRaw, certifyFn, authSign) {
+  async function makerPollTake(M, relay, offerHash, myIntent, maxXnoRaw, certifyFn, authSign, instantOffer) {
     let sawJunk = false, declined = null;
     for (let slot = 0; slot < RV_SLOTS; slot++) {
       const req = await relay.fetch(rvBox(offerHash), slot);
@@ -316,16 +329,20 @@
         rj.cert = cert;
       }
       const { kp, pub } = await ecdhMake();
-      // Sign (offerHash || pub) so the taker can prove this reply came from the
-      // account that posted the offer, not a slot-squatting impostor.
+      // Instant tier: only offered to a taker that advertised support (iok), so
+      // an old taker never sees a v2 signature it cannot verify.
+      const inst = (instantOffer && rj.iok && Number.isInteger(instantOffer.confs) && instantOffer.confs >= 1 && instantOffer.confs <= 9) ? { confs: instantOffer.confs } : null;
+      // Sign (offerHash || pub [|| confs]) so the taker can prove this reply —
+      // tier included — came from the account that posted the offer.
       let sig = null;
-      if (authSign) { try { sig = await authSign(await authMsg(offerHash, pub)); } catch (e) { sig = null; } }
+      if (authSign) { try { sig = await authSign(await authMsg(offerHash, pub, inst ? inst.confs : null)); } catch (e) { sig = null; } }
       const reply = { v: 1, pub: hx(pub) };
+      if (inst) reply.instant = inst;
       if (sig && sig.length) reply.sig = hx(sig);
       await relay.post(rvRespBox(offerHash), slot, jsonBytes(reply));
       const shared = await ecdhShared(kp, hb(rj.pub));
       const d = await M.derive(shared, false);
-      return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), deal: rj.deal, cert: rj.cert || null, shared: hx(shared), slot };
+      return { wire: new M.MailboxWire([relay], d.send, d.recv, d.key), deal: rj.deal, cert: rj.cert || null, shared: hx(shared), slot, instant: inst };
     }
     // A valid take we refused on price outranks junk: our quote is stale.
     if (declined) return { declined };
@@ -485,7 +502,12 @@
   // time left — Monero is the slow side and a silent minute reads as a hang.
   // `deadlineMs` (optional): give up and return null instead of waiting forever,
   // so the XNO funder can fall back to the refund if the lock never appears.
-  async function waitJointXmrLock(deps, party, minAtomic, sinceHeight, deadlineMs, defaultLookback) {
+  async function waitJointXmrLock(deps, party, minAtomic, sinceHeight, deadlineMs, defaultLookback, confTarget) {
+    // confTarget < 10 is the maker-priced INSTANT tier: the maker chose to
+    // trust the lock at a shallower depth and carries the reorg risk beyond it.
+    // Only pre-commit verification waits pass this; SWEEPS always use the full
+    // 10 — spendability is Monero consensus and cannot be negotiated.
+    const CONF = Math.min(XMR_CONF, Math.max(1, confTarget || XMR_CONF));
     deps.note("Monero: connecting to a node…");
     const node = await deps.xmr.XmrNode.connect(deps.moneroPost);
     const spendPub = hb(party.jointMonero.spend_pub), viewKey = hb(party.jointMonero.view_key);
@@ -515,11 +537,11 @@
           for (const o of outs) if (BigInt(o.amount) >= BigInt(minAtomic)) { hit = o; break; }
         }
       }
-      if (hit && tip - hit.block >= XMR_CONF) { deps.note(`Monero: lock of ${raw2dec(hit.amount, 12)} XMR confirmed ✓ (block ${hit.block.toLocaleString()}, ${tip - hit.block} confirmations)`); return { hit, tip }; }
+      if (hit && tip - hit.block >= CONF) { deps.note(`Monero: lock of ${raw2dec(hit.amount, 12)} XMR confirmed ✓ (block ${hit.block.toLocaleString()}, ${tip - hit.block} confirmations)`); return { hit, tip }; }
       if (hit) {
-        const conf = Math.max(0, tip - hit.block), mins = Math.max(1, (XMR_CONF - conf) * 2);
+        const conf = Math.max(0, tip - hit.block), mins = Math.max(1, (CONF - conf) * 2);
         const elapsedM = Math.floor((Date.now() - startedAt) / 60000);
-        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${XMR_CONF} confirmations · ~${mins} min left (Monero consensus requires ${XMR_CONF} blocks — ~20 min on average, block times vary) · ${elapsedM} min elapsed · no re-scan, just waiting`);
+        deps.note(`Monero: lock found at block ${hit.block.toLocaleString()} · ${conf}/${CONF} confirmations · ~${mins} min left` + (CONF < XMR_CONF ? ` (⚡ instant tier: the maker accepts the lock at ${CONF} blocks and carries the early-release risk)` : ` (Monero consensus requires ${CONF} blocks — ~20 min on average, block times vary)`) + ` · ${elapsedM} min elapsed · no re-scan, just waiting`);
       } else {
         round++;
         deps.note(`Monero: no ${want} XMR lock on the joint address yet (chain at ${tip.toLocaleString()}) · the other side may still be sending · re-scanning in 45 s (check ${round})`);
@@ -809,7 +831,7 @@
         // we already locked; profitability is moot). In step with A's wait, so
         // the co-sign wire round below finds both sides present.
         const cdeps = Object.assign({}, deps, { price: null });
-        await waitJointXmrLock(cdeps, party, deal.xmrAtomic, lockH ? Math.max(1, lockH - 60) : 0, undefined, 5000);
+        await waitJointXmrLock(cdeps, party, deal.xmrAtomic, lockH ? Math.max(1, lockH - 60) : 0, undefined, 5000, deps.confTarget);
       } catch (e) { /* proceed; the wire timeout still protects us */ }
       for (let i = 0; i < 120 && !(await confirmedQuorum(deps, open.hash)); i++) { deps.note("waiting for joint account to confirm on a quorum…"); await new Promise((r) => setTimeout(r, 5000)); }
       // The claim sends the joint XNO to the XNO-BUYER, which is B (the
@@ -868,7 +890,7 @@
         try { const nd = await deps.xmr.XmrNode.connect(deps.moneroPost); S.set("lockScanFrom", Math.max(1, (await nd.height()) - 60)); } catch (e) {}
       }
       const since = S.get("lockScanFrom") || 0;
-      const res = await waitJointXmrLock(deps, party, deal.xmrAtomic, since, deadline);
+      const res = await waitJointXmrLock(deps, party, deal.xmrAtomic, since, deadline, undefined, deps.confTarget);
       if (!res) {
         // They never locked. Take the refund: it returns the XNO and, because
         // it is an adaptor signature, publishes our Monero share — harmless
