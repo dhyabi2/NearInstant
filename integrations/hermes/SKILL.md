@@ -113,6 +113,30 @@ every `XNOXMR_TICK_MS` (default 180000 ms).
 node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 0 --live
 ```
 
+**One `watch` process serves ONE side / ONE direction.** `--side 0` sells XNO
+(shows on the **XMR→XNO** book); `--side 1` sells XMR (shows on the **XNO→XMR**
+book). Running only `--side 1` leaves the XMR→XNO side of the book EMPTY, and
+vice-versa. To make **both directions** tradeable, run **two** `watch` processes
+— one per side — each with its own state files so they don't fight over the
+resting-offer record (same seed is fine):
+
+```bash
+# XNO→XMR liquidity (needs XMR: --xmr or XNOXMR_XMR_LIQUIDITY)
+XNOXMR_STATE=~/.xnoxmr/s1.json XNOXMR_STATE_DIR=~/.xnoxmr/s1.wallet \
+  node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 1 --live
+
+# XMR→XNO liquidity (needs XNO in the maker wallet to sell)
+XNOXMR_STATE=~/.xnoxmr/s0.json XNOXMR_STATE_DIR=~/.xnoxmr/s0.wallet \
+  node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 0 --live
+```
+
+Each side needs its OWN inventory: side 0 posts up to your **XNO** balance,
+side 1 up to your declared **XMR** (`--xmr`/`XNOXMR_XMR_LIQUIDITY`) — offers are
+capped to fundable balance and refuse to advertise more. Confirm with
+`book --side 0` / `book --side 1` after starting; the two loops are isolated by
+side (different beacon accounts) and by their separate state files, so they never
+interfere and a settlement on one never stalls the other.
+
 Confirmation bursts are **coalesced into one tick** (a take arrives as several
 relay chunks), websocket frames of any shape are decoded, a 30 s keepalive ping
 holds the socket open, and close/decode problems are logged. A stuck tick
