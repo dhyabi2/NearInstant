@@ -318,6 +318,27 @@ offers. At a 30–60 bps spread a *filled* small swap earns only cents.
 If asked about revenue, say the bottleneck is demand, not autonomy. If asked
 about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 
+## Instant tier — maker-priced early release (side 0, opt-in)
+
+By default the XNO you fund is only claimable after the taker's XMR lock has
+**10 Monero confirmations** (~20 min). The instant tier lets you release after
+`XNOXMR_INSTANT_CONFS` (e.g. 2, ~4 min): the taker gets their XNO fast, and
+**you** carry the reorg risk beyond that depth — a business decision you price:
+
+- Only offered when the certified net is at least `30 + XNOXMR_INSTANT_EXTRA_BPS`
+  bps (default 25 extra — the risk premium must actually be in the spread).
+- Only up to `XNOXMR_INSTANT_MAX_XNO` per fill (default 200) — caps worst-case
+  loss to (deal size) × P(reorg deeper than N), which for N=2 is a rare event.
+- Side 0 only (you fund the XNO, so only YOU are exposed). Takers never carry
+  extra risk on any tier; sweeps always use the full 10 confirmations
+  (spendability is Monero consensus).
+- The promise is **signed**: the confirmation count is bound into your
+  authenticated accept, so it cannot be forged or altered in transit; old
+  takers that don't understand the tier never receive it.
+
+Off by default (`XNOXMR_INSTANT_CONFS=0`). Start small: N=2, tight cap, watch
+the first fills.
+
 ## Recovering a stuck settlement (operator)
 
 A settlement holds the offer while it runs. If one gets stuck, two commands
@@ -365,6 +386,9 @@ has `lock` set and will refuse anyway).
 | `XNOXMR_TICK_TIMEOUT_MS` | `watch` stuck-tick guard release, ms (default 900000) |
 | `XNOXMR_NANO_RPC_KEY` | nano.to API key — sent to rpc.nano.to (header + body) and ws.nano.to (`?key=`) |
 | `XNOXMR_FUND_WAIT_MS` | how long a settlement waits for the taker's XNO before abandoning cleanly (default 300000; min 30000) |
+| `XNOXMR_INSTANT_CONFS` | instant tier (side 0): release XNO after N Monero confs instead of 10; 0 = off (default). **You carry the reorg risk beyond N** |
+| `XNOXMR_INSTANT_MAX_XNO` | instant-tier per-fill size cap (default 200) |
+| `XNOXMR_INSTANT_EXTRA_BPS` | extra certified net required on top of the 30 bps floor to offer instant (default 25) |
 
 ## Running more than one agent on the same machine
 

@@ -581,7 +581,7 @@ CMDS.tick = async (args) => {
           const bgNote = (m) => console.error("[resume " + sid.slice(0, 10) + "] " + m);
           const rdeps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi: wApi, moneroPost: wApi.moneroPost(),
                           note: WATCH_MODE ? bgNote : ((m) => act("resume: " + m)), store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2,
-                          recoverWaitMs: 60 * 1000, fundWaitMs: FUND_WAIT_MS,
+                          recoverWaitMs: 60 * 1000, fundWaitMs: FUND_WAIT_MS, confTarget: (o.instant && o.instant.confs) || undefined,
                           claimWaitMs: Math.max(60 * 1000, 60 * 60 * 1000 - (Date.now() - ((o.presigned && o.presigned.at) || Date.now()))) };
           const runResume = () => (roleIsA ? TP.runA : TP.runB)(rdeps, TP.restore(wasm, o.party, null));
           if (WATCH_MODE) {
@@ -689,10 +689,21 @@ CMDS.tick = async (args) => {
       try {
         const cf = (dl) => certifyFor(ctx.side, price)(dl);
         const authSign = (msg) => { try { return wasm.msg_sign(seed, msg); } catch (e) { return null; } };
-        const hs = await TP.makerPollTake(MB, relayFor(seed), ctx.block, ctx.intent, maxXnoRawOf(ctx.intent), cf, authSign);
+        // Instant tier: only on side 0 (WE fund the XNO, so WE carry the early-
+        // release risk), only within the size cap, and only when the certified
+        // net already carries the risk premium on top of the normal floor.
+        let instantOffer;
+        if (INSTANT_CONFS >= 1 && ctx.side === 0) {
+          const dealXno = Number(BigInt(r.deal.xnoRaw) / (10n ** 24n)) / 1e6;
+          if (dealXno <= INSTANT_MAX_XNO && r.cert.netBps >= MIN_ACCEPT_BPS + INSTANT_EXTRA_BPS) {
+            instantOffer = { confs: INSTANT_CONFS };
+            act("⚡ instant tier offered: releasing after " + INSTANT_CONFS + " confs (net " + r.cert.netBps + " bps ≥ " + (MIN_ACCEPT_BPS + INSTANT_EXTRA_BPS) + " bps premium floor, " + dealXno.toFixed(2) + " ≤ " + INSTANT_MAX_XNO + " XNO cap)");
+          }
+        }
+        const hs = await TP.makerPollTake(MB, relayFor(seed), ctx.block, ctx.intent, maxXnoRawOf(ctx.intent), cf, authSign, instantOffer);
         if (hs && hs.deal && hs.shared) {
           const offerSnap = ctx;
-          const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, note);
+          const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot, instant: hs.instant }, note);
           if (WATCH_MODE) {
             // Settlement takes 25-40 min; awaiting it INSIDE the tick froze the
             // whole maker loop. Under watch it runs in the background; the loop
@@ -798,9 +809,11 @@ async function settleTake(seed, offer, take, note) {
   const party = await TP.ceremony(wasm, XMR, rand, "mainnet", wire, roleIsA, take.deal, note, walletApi.account());
   store.set("party", party.snapshot());
   store.set("acceptCert", take.cert);
+  if (take.instant && take.instant.confs) store.set("instant", take.instant);   // persist the tier: a resumed session must honour it
   const priceFn = async () => { const pr = await marketPrice(); return pr.ok ? { ok: true, mid: pr.mid, sources: pr.sources, at: pr.at || Date.now() } : { ok: false, reason: pr.reason }; };
   const deps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi, moneroPost: walletApi.moneroPost(),
-                 note, store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2, fundWaitMs: FUND_WAIT_MS };
+                 note, store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2, fundWaitMs: FUND_WAIT_MS,
+                 confTarget: (take.instant && take.instant.confs) || undefined };
   let result;
   try { result = await (roleIsA ? TP.runA : TP.runB)(deps, party) || {}; }
   catch (e) {
@@ -829,6 +842,14 @@ const AUTOSETTLE = env("XNOXMR_AUTOSETTLE", "1") !== "0";
 // abandoning the settlement cleanly (nothing is locked at that point). Bounds a
 // vanished-taker hang that would otherwise freeze the offer until a restart.
 const FUND_WAIT_MS = Math.max(30000, parseInt(env("XNOXMR_FUND_WAIT_MS", "300000"), 10) || 300000);
+// INSTANT TIER (idea J): on side-0 offers (maker funds XNO), release the XNO
+// after N confirmations of the taker's XMR lock instead of 10. The MAKER
+// carries the reorg risk beyond N — a business decision, priced via an extra
+// spread requirement and capped in size. 0 = off (default). Taker-side risk is
+// never changed; sweeps always use the full 10 (consensus spendability).
+const INSTANT_CONFS = Math.min(9, Math.max(0, parseInt(env("XNOXMR_INSTANT_CONFS", "0"), 10) || 0));
+const INSTANT_MAX_XNO = Math.max(0, parseFloat(env("XNOXMR_INSTANT_MAX_XNO", "200")) || 200);
+const INSTANT_EXTRA_BPS = Math.max(0, parseInt(env("XNOXMR_INSTANT_EXTRA_BPS", "25"), 10) || 25);
 
 CMDS.settle = async (args) => {
   args = args || {};
@@ -968,7 +989,10 @@ CMDS.help = async () => out({
   env: { XNOXMR_MAKER_SEED: "maker wallet seed (else WALLET_A_SEED from .env)",
          XNOXMR_WORK_URL: "PoW proxy base, default https://www.nearinstant.xyz",
          XNOXMR_NANO_NODES: "comma-separated Nano RPC nodes",
-         XNOXMR_FUND_WAIT_MS: "how long the maker waits for a taker's XNO before abandoning cleanly (default 300000)" },
+         XNOXMR_FUND_WAIT_MS: "how long the maker waits for a taker's XNO before abandoning cleanly (default 300000)",
+         XNOXMR_INSTANT_CONFS: "side-0 instant tier: release XNO after N Monero confs instead of 10 (0=off; YOU carry the reorg risk beyond N)",
+         XNOXMR_INSTANT_MAX_XNO: "instant-tier size cap in XNO (default 200)",
+         XNOXMR_INSTANT_EXTRA_BPS: "extra certified net (on top of the 30 bps floor) required to offer instant (default 25)" },
 });
 
 // ---- arg parsing -----------------------------------------------------------

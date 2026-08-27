@@ -3063,6 +3063,7 @@ async function certPrice() {
 }
 function tpDeps(store, note, xmrDest) {
   return { wasm: walletWasm, xmr: swapXmr, beacon: expBeacon, urls: rpcState.nano, xmrDest: xmrDest || null,
+           confTarget: ((store.get("instant") || {}).confs) || undefined,
            walletApi, moneroPost: swapMoneroPost(), note: note || tpLog, store, guard: USE_GUARD_LADDER,
            price: certPrice, minProfitBps: CERT.MIN_ACCEPT_BPS, abortBps: CERT.ABORT_BPS,
            maxUnrealizedLossBps: CERT_MAX_UNREALIZED_LOSS_BPS, maxStress: CERT_MAX_STRESS };
@@ -3083,6 +3084,7 @@ function tpProviderAddress() { try { return JSON.parse(expWasm.seed_account(expS
 async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
   const TP = window.XnoxmrTwoParty;
   const store = tpStore(sessionId);
+  if (hs.instant && hs.instant.confs) store.set("instant", hs.instant);   // persist: a resumed session keeps the maker-promised tier
   const rand = (n) => { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; };
   hs.wire.pollMs = 3000;
   // Give the live 2-of-2 claim/refund co-sign room to absorb the other side's
@@ -4244,6 +4246,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     const makerAcctBytes = walletWasm.nano_address_decode(String(swSelected.maker || "").trim());
     const authVerify = (msg, sig) => { try { return walletWasm.nano_check(makerAcctBytes, msg, sig); } catch (e) { return false; } };
     const hs = await TP.takerHandshake(M, tpRelay(), swSelected, deal, tpLog, authVerify);
+    if (hs.instant) tpLog("⚡ INSTANT tier: this maker releases your XNO after " + hs.instant.confs + " Monero confirmation" + (hs.instant.confs === 1 ? "" : "s") + " (~" + (hs.instant.confs * 2) + " min) instead of 10 (~20 min). The maker carries the early-release risk — it is priced into their spread; your safety is unchanged.");
     await tpRun(hs, deal, roleIsA, String(deal.offerHash).toLowerCase() + "-T", tpLog, "taker", extDest);
     tpLog("swap complete ✓ — " + (roleIsA ? "XMR" : "XNO") + " sent to " + extDest.slice(0, 12) + "…" + extDest.slice(-6));
     swOffersRefresh(true);
