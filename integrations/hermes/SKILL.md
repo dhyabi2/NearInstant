@@ -89,6 +89,11 @@ refund — so "autonomous" never means "unconditional". Still, respect these:
   Nano/Monero settlement. **Watch the first real runs and use small amounts.**
 - Settlement takes 25–40 minutes; a process that dies mid-swap must resume to
   recover (state is persisted). Keep the agent running.
+- **Crash recovery is automatic**: every `tick --live` re-runs unfinished
+  sessions — completing them, refunding the XNO side after a claim timeout, or
+  recovering locked XMR from the counterparty's refund. The claim presig and
+  refund pre-signature are persisted, so recovery needs no counterparty online.
+  A session that never moved funds is abandoned harmlessly.
 
 Do not raise the guardrails or bypass a refusal.
 

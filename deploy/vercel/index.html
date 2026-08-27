@@ -678,7 +678,7 @@
         <div class="view hidden" id="viewFaq" style="margin-top:1rem">
           <details class="faq"><summary>Why is joining early better?</summary><div class="a">One honest reason: <b>less competition</b>. Swappers always take the best-priced live offer; when few people are providing, more of the trades flow through <i>your</i> coins. There are no levels, ranks or priority — nothing is granted for tenure. It is <b>not a guaranteed return</b>: no trades, no earnings.</div></details>
           <details class="faq"><summary>Can you take or freeze my coins?</summary><div class="a">No. This runs entirely in your browser with <b>no server of ours in the middle</b>. Your key is generated here, encrypted with your passphrase (memory-hard Argon2id → AES-256-GCM), and never leaves this device. A swap is enforced by cryptography, 2-of-2 joint accounts and adaptor signatures, not by trusting us or anyone else.</div></details>
-          <details class="faq"><summary>What if a swap fails, or I close the browser mid-swap?</summary><div class="a">Every completed step is saved on your device and no step can run twice. A swap is listed under <i>Unfinished swaps</i> on the Swap tab with the joint addresses and the last saved step; the final step (sweeping your Monero) resumes with one tap, but the co-signing steps in the middle need both browsers back at the same time — so keep the page open until it says complete, and use small amounts.</div></details>
+          <details class="faq"><summary>What if a swap fails, or I close the browser mid-swap?</summary><div class="a">Every completed step is saved on your device and no step can run twice. If anything fails mid-swap, recovery is automatic: reopen the page (wallet unlocked) and the swap under <i>Unfinished swaps</i> auto-resumes — it completes, takes the built-in refund so your XNO comes back, or reclaims your locked XMR from the counterparty’s refund. If the other side vanishes, your side refunds itself after a timeout. Still: keep the page open during a swap and use small amounts while this is young.</div></details>
           <details class="faq"><summary>Do I need an account, email, or ID?</summary><div class="a">None. No sign-up, no KYC. You just choose a passphrase, which encrypts a wallet held only in this browser.</div></details>
           <details class="faq"><summary>What are the fees?</summary><div class="a">We charge <b>no platform fee</b>. Nano is feeless; the only cost is Monero's small network fee. When you earn, you keep the spread the people trading through you pay.</div></details>
           <details class="faq"><summary>How is the XNO/XMR price decided? Who sets it?</summary><div class="a"><b>Nobody central.</b> It's a peer-to-peer order book. When you <b>provide</b>, your offer is priced from the live market rate plus a spread that scales with volatility. When you <b>swap</b>, you pick the best offer that's open. The app may show the going market price from a reference exchange as a guide, but nobody is forced to use it, if an offer is priced badly, traders just pick another. That's what keeps it trustless: there is no rate-setter to trust.</div></details>
@@ -4001,7 +4001,8 @@ function tpSessionsRender() {
   for (const sess of open) {
     const st = tpStore(sess.id);
     const steps = ["lock", "lockseen", "fund", "open", "refund", "claim", "x", "sweep"].filter(k => st.get(k));
-    const canResume = (sess.roleIsA && st.get("x")) || (!sess.roleIsA && st.get("claim"));
+    const aRecoverable = sess.roleIsA && st.get("open") && st.get("refund");
+    const canResume = (sess.roleIsA && (st.get("x") || aRecoverable)) || (!sess.roleIsA && (st.get("claim") || st.get("lock")));
     const row = document.createElement("div"); row.className = "hint"; row.style.margin = ".4rem 0";
     const amt = raw2(sess.deal.xnoRaw, 30) + " XNO ⇄ " + raw2(sess.deal.xmrAtomic, 12) + " XMR";
     row.textContent = new Date(sess.at).toLocaleString() + " · " + (sess.role === "maker" ? "your offer" : "you took an offer") + " · " + amt
@@ -4010,23 +4011,30 @@ function tpSessionsRender() {
     box.append(row);
     const b = document.createElement("button"); b.style.width = "100%";
     if (canResume) {
-      b.textContent = sess.roleIsA ? "Resume — sweep my Monero" : "Mark finished";
+      b.textContent = sess.roleIsA ? (st.get("x") ? "Resume — sweep my Monero" : "Recover — refund or finish")
+                                   : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
       b.onclick = async () => {
         b.disabled = true;
         try {
           await tpEnsure(); const TP = window.XnoxmrTwoParty;
           const party = TP.restore(walletWasm, st.get("party"), null);
-          await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party);
-          st.set("done", { at: Date.now() }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() });
-          histAdd({ at: Date.now(), role: sess.role, roleIsA: sess.roleIsA, side: sess.deal.side, xnoRaw: sess.deal.xnoRaw, xmrAtomic: sess.deal.xmrAtomic, priceE9: sess.deal.priceE9, session: sess.id });
-          tpLog("finished ✓"); tpSessionsRender();
+          const res = await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party) || {};
+          st.set("done", { at: Date.now(), result: res }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() });
+          if (!res.refunded && !res.recovered) histAdd({ at: Date.now(), role: sess.role, roleIsA: sess.roleIsA, side: sess.deal.side, xnoRaw: sess.deal.xnoRaw, xmrAtomic: sess.deal.xmrAtomic, priceE9: sess.deal.priceE9, session: sess.id });
+          tpLog(res.refunded ? "refunded ✓ — your XNO is back" : res.recovered ? "recovered ✓ — your XMR is back" : "finished ✓"); tpSessionsRender();
         } catch (e) { tpLog("resume stopped: " + (e && e.message || e)); b.disabled = false; }
       };
     } else {
-      b.textContent = "Cannot auto-resume: both browsers must be on the same session — keep this data, contact the counterparty";
+      b.textContent = "Nothing recoverable on your side yet (no funds moved, or waiting on the counterparty) — keep this data";
       b.disabled = true;
     }
     box.append(b);
+  }
+  // AUTO-RECOVERY: refunds and recoveries need no human. Run the first eligible
+  // session automatically (once per page load; the wallet must be unlocked).
+  if (!window.__tpAutoResumed && tpWalletOpen()) {
+    const btn = box.querySelector("button:not(:disabled)");
+    if (btn) { window.__tpAutoResumed = true; tpLog("auto-recovering an unfinished swap…"); btn.click(); }
   }
 }
 // ---- local history of settled swaps ----------------------------------------

@@ -671,12 +671,47 @@
     // refund signature on-chain carries A_xmr — which is exactly what we need
     // to sweep our locked XMR back. Check before spending work on the claim.
     if (!S.get("claim")) {
-      const spent = await frontierSigIfMoved(deps, party, open.hash);
-      if (spent) {
+      const checkMoved = async () => {
+        const I = deps.beacon._internals;
+        try {
+          const info = await I.rpc(deps.urls, { action: "account_info", account: party.jointNanoAddress });
+          if (!info || !info.frontier || info.frontier.toLowerCase() === open.hash.toLowerCase()) return null;
+          const bi = await I.rpc(deps.urls, { action: "blocks_info", hashes: [info.frontier], json_block: "true" });
+          const blk = bi && bi.blocks && bi.blocks[info.frontier];
+          if (!blk || !blk.contents) return null;
+          return { sig: String(blk.contents.signature || ""), link: String(blk.contents.link || "").toLowerCase(), hash: String(info.frontier) };
+        } catch (e) { return null; }
+      };
+      // If the frontier moved it is either OUR claim from a crashed earlier run
+      // (link = our wallet) — finish the bookkeeping — or the counterparty's
+      // refund (link = their wallet): recover the locked XMR from its signature.
+      const onMoved = async (mv) => {
+        if (mv.link === String(party.myWalletAcct || "").toLowerCase()) {
+          S.set("claim", { hash: mv.hash });
+          try { await deps.walletApi.receive(); } catch (e) {}
+          return "claimed";
+        }
         deps.note("the counterparty refunded — recovering your locked XMR…");
-        const rec = await recoverXmrFromRefund(deps, party, S.get("refund"), spent);
+        const rec = await recoverXmrFromRefund(deps, party, S.get("refund"), mv.sig);
         S.set("recovered", rec);
-        return { done: true, recovered: true };
+        return "recovered";
+      };
+      let mv = await checkMoved();
+      if (mv) {
+        if (await onMoved(mv) === "recovered") return { done: true, recovered: true };
+        // else: our claim landed — fall through to the realized bookkeeping
+      } else if (!party._wire) {
+        // Resumed without the counterparty: a claim needs their co-signature,
+        // so the only productive move is waiting for their (automatic) refund
+        // and recovering the XMR from it. Bounded — the caller retries later.
+        const until = Date.now() + (deps.recoverWaitMs || 15 * 60 * 1000);
+        deps.note("waiting for the counterparty's refund to recover your XMR…");
+        while (Date.now() < until) {
+          await new Promise((r) => setTimeout(r, 10000));
+          mv = await checkMoved();
+          if (mv) { if (await onMoved(mv) === "recovered") return { done: true, recovered: true }; break; }
+        }
+        if (!S.get("claim")) throw new Error("counterparty has not refunded yet — resume again later (your XMR stays recoverable)");
       }
     }
     // Confirm-before-reveal, then complete the adaptor claim (reveals x on-chain).
@@ -748,6 +783,10 @@
     // and A's XNO is committed. Re-verify against the market now; if the deal
     // has gone, take the adaptor refund instead - which publishes A's Monero
     // share so B recovers its lock. Nobody loses more than a network fee.
+    // The claim presig is PERSISTED so a crashed session can resume — extract x
+    // and sweep, or refund — without the counterparty ever coming back online.
+    const dest = party.peerWalletAcct || "";                  // claim XNO dest = B's wallet
+    const claimHash = deps.wasm.state_block_hash(acctHex, open.hash, acctHex, "0", dest, "send");
     if (!S.get("presigned")) {
       const c = await gate(deps, party, "before committing the claim");
       if (!c.ok) {
@@ -756,22 +795,47 @@
         deps.note("refunded instead of committing: " + c.reason);
         return { done: true, refunded: true, reason: c.reason };
       }
-      S.set("presigned", { at: Date.now() });
+      const pre0 = await adaptorPresignRole(party, claimHash);
+      S.set("presigned", { at: Date.now(), pre: hx(pre0) });
     }
-    // Presign the claim (B completes it); then watch the joint account's frontier
-    // for B's broadcast claim, extract x, and sweep the XMR home.
-    const dest = party.peerWalletAcct || "";                  // claim XNO dest = B's wallet
-    const claimHash = deps.wasm.state_block_hash(acctHex, open.hash, acctHex, "0", dest, "send");
-    const pre = await adaptorPresignRole(party, claimHash);
+    let preHex = (S.get("presigned") || {}).pre;
+    if (!preHex) {  // session saved before presig persistence: needs the wire once
+      if (!party._wire) throw new Error("this saved swap predates presig persistence — resume with the counterparty online, or wait for their refund");
+      preHex = hx(await adaptorPresignRole(party, claimHash));
+      S.set("presigned", { at: Date.now(), pre: preHex });
+    }
+    const pre = hb(preHex);
     if (!S.get("x")) {
       const I = deps.beacon._internals;
+      // Wait for B's claim — but NOT forever: past the deadline, take the
+      // refund. The race is safe both ways: if B's claim lands first, our
+      // refund is rejected and the loop extracts x from the claim; if the
+      // refund lands first, B recovers its XMR from the refund signature.
+      const claimDeadline = Date.now() + (deps.claimWaitMs || 60 * 60 * 1000);
       let claimSig = null;
       for (;;) {
         const info = await I.rpc(deps.urls, { action: "account_info", account: party.jointNanoAddress });
         if (info && info.frontier && info.frontier.toLowerCase() !== open.hash.toLowerCase()) {
           const bi = await I.rpc(deps.urls, { action: "blocks_info", hashes: [info.frontier], json_block: "true" });
           const blk = bi && bi.blocks && bi.blocks[info.frontier];
-          if (blk && blk.contents && blk.contents.signature) { claimSig = deps.wasm.nano_address_decode ? blk.contents.signature : null; break; }
+          const link = blk && blk.contents ? String(blk.contents.link || "").toLowerCase() : "";
+          if (link && link === String((S.get("refund") || {}).dest || "").toLowerCase()) {
+            // the frontier is OUR refund (an earlier timeout attempt landed)
+            S.set("refunded", { hash: info.frontier, reason: "claim timeout" });
+            deps.note("refunded — your XNO is back.");
+            try { await deps.walletApi.receive(); } catch (e) {}
+            return { done: true, refunded: true, reason: "claim timeout" };
+          }
+          if (blk && blk.contents && blk.contents.signature) { claimSig = String(blk.contents.signature); break; }
+        }
+        if (Date.now() > claimDeadline) {
+          deps.note("the counterparty never claimed — taking the refund…");
+          try {
+            const r = await broadcastRefund(deps, party, open.hash, S.get("refund"));
+            S.set("refunded", Object.assign(r, { reason: "claim timeout" }));
+            deps.note("refunded — your XNO is back.");
+            return { done: true, refunded: true, reason: "claim timeout" };
+          } catch (e) { deps.note("refund raced the claim — checking the chain…"); }
         }
         deps.note("waiting for the counterparty to claim (reveals x)…");
         await new Promise((r) => setTimeout(r, 8000));

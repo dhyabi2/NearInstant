@@ -492,6 +492,42 @@ CMDS.tick = async (args) => {
     // auto-receive: pocket any incoming XNO first, so new liquidity is spendable this cycle
     let received = null;
     if (live) { try { const r = await walletFor(seed).receive(() => {}); if (r.pocketed > 0n) { received = HW.fmtXno(r.pocketed); act("received " + received + " XNO (was receivable) -> pocketed"); } } catch (e) { act("auto-receive skipped (non-fatal): " + (e && e.message || e)); } }
+    // AUTO-RESUME unfinished settlement sessions (crash recovery). The claim
+    // presig and the refund pre-signature are PERSISTED, so a dead process's
+    // swap either completes, refunds (XNO side), or recovers the locked XMR
+    // from the counterparty's refund — with no counterparty online.
+    if (AUTOSETTLE && live) {
+      try {
+        const files = fs.existsSync(STATE_DIR) ? fs.readdirSync(STATE_DIR).filter((f) => f.startsWith("sess_") && f.endsWith(".json")) : [];
+        for (const f of files) {
+          let o; try { o = JSON.parse(fs.readFileSync(path.join(STATE_DIR, f), "utf8")); } catch (e) { continue; }
+          if (!o || o.done || !o.party) continue;
+          const sid = f.replace(/^sess_/, "").replace(/\.json$/, "");
+          const store = fileStore(sid);
+          const roleIsA = !!o.party.roleIsA;
+          if (roleIsA && !(o.open && o.refund)) {
+            if (!o.fund) { store.set("done", { at: Date.now(), result: { abandoned: true } }); act("abandoned session " + sid.slice(0, 10) + " (nothing moved)"); }
+            else act("session " + sid.slice(0, 10) + " funded but joint never opened — needs the counterparty; keeping for manual recovery");
+            continue;
+          }
+          if (!roleIsA && !o.lock) { store.set("done", { at: Date.now(), result: { abandoned: true } }); act("abandoned session " + sid.slice(0, 10) + " (nothing locked)"); continue; }
+          act("resuming unfinished swap " + sid.slice(0, 10) + "…");
+          const wApi = walletFor(seed);
+          const priceFn = async () => { const p2 = await marketPrice(); return p2.ok ? { ok: true, mid: p2.mid, sources: p2.sources, at: Date.now() } : { ok: false, reason: p2.reason }; };
+          const rdeps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi: wApi, moneroPost: wApi.moneroPost(),
+                          note: (m) => act("resume: " + m), store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2,
+                          recoverWaitMs: 60 * 1000,
+                          claimWaitMs: Math.max(60 * 1000, 60 * 60 * 1000 - (Date.now() - ((o.presigned && o.presigned.at) || Date.now()))) };
+          try {
+            const rparty = TP.restore(wasm, o.party, null);
+            const res = await (roleIsA ? TP.runA : TP.runB)(rdeps, rparty) || {};
+            store.set("done", { at: Date.now(), result: res });
+            act("resumed " + sid.slice(0, 10) + ": " + (res.refunded ? "REFUNDED" : res.recovered ? "RECOVERED" : "SETTLED"));
+          } catch (e) { act("resume " + sid.slice(0, 10) + " pending: " + String((e && e.message) || e).slice(0, 120)); }
+          break;   // one session per tick keeps the tick bounded
+        }
+      } catch (e) { act("session scan skipped: " + (e && e.message || e)); }
+    }
     const pr = await marketPrice();
     const st = stLoad();
     const publishWithdraw = async () => { if (!live) { act("DRY: would withdraw"); return; }
