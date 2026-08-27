@@ -1,8 +1,8 @@
 trustless XNO<->XMR swap — content-addressed single-file bundle
 ================================================================
-file:        swap.html   (271415 bytes, fully self-contained)
-sha256:      0a425e89baad59237af7de43225dc8640bdb5f36065a1438ced6a2f87a1aa33c
-ipfs cidv1:  bafkreiakijpitovnlerxv566imrf3sdebpnv6nqglikdrtwwul4hugvdhq
+file:        swap.html   (272995 bytes, fully self-contained)
+sha256:      cb9d045a3f5d6855167e9cd7ffcd86a4175451ccd3b265c1d6a7a736ad0293b5
+ipfs cidv1:  bafkreigltucfup25nbkrm7u427743bvec5kfdtgtwjs4dvvhu43k2autwu
 
 VERIFY (no server needed):
   shasum -a 256 swap.html   # must equal the sha256 above
@@ -14,7 +14,7 @@ PUBLISH (pick any / all — content hash is identical everywhere):
 
 REACH IT (any of these resolve the same bytes):
   https://<cid>.ipfs.dweb.link
-  https://ipfs.io/ipfs/bafkreiakijpitovnlerxv566imrf3sdebpnv6nqglikdrtwwul4hugvdhq
+  https://ipfs.io/ipfs/bafkreigltucfup25nbkrm7u427743bvec5kfdtgtwjs4dvvhu43k2autwu
   or open the saved swap.html directly (file://).
 
 The hash is published OUTSIDE this file (here, git tags, pinned posts) so

@@ -3144,9 +3144,9 @@ function tpDealFromInput() {
   // decline this and you would wait out a timeout for nothing. Same math the
   // maker runs, on public inputs (its price, the market mid, the fee).
   if (TP && swLastMid) {
-    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swViableMid(swSelected.intent.side), null, CERT.MIN_ACCEPT_BPS);
-    if (minRaw === null) return { unviable: true };
-    if (xnoRaw < BigInt(minRaw)) return { tooSmall: true, minXno: Number(BigInt(minRaw) / (10n ** 24n)) / 1e6 };
+    if (TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swViableMid(swSelected.intent.side), null, CERT.MIN_ACCEPT_BPS) === null) return { unviable: true };
+    const floor = swMinViableRaw(swSelected.intent.price_e9, swSelected.intent.side);
+    if (floor !== null && xnoRaw < floor) return { tooSmall: true, minXno: Number(floor / (10n ** 24n)) / 1e6 };
   }
   const d = { offerHash: swSelected.blockHash, side: swSelected.intent.side, priceE9: priceE9.toString(),
               xnoRaw: xnoRaw.toString(), xmrAtomic: ((xnoRaw * priceE9 * 1000n) / (10n ** 30n)).toString() };
@@ -3161,8 +3161,21 @@ function tpDealFromInput() {
 // side 1 sells XMR → profits as mid rises, so nudge up). A clearly-underwater
 // offer still fails; a marginal one is left for the maker's own fast
 // accept/decline to settle, instead of being blocked here on oracle noise.
-const SW_ORACLE_TOL = 0.01;   // 1% allowance for oracle divergence
+const SW_ORACLE_TOL = 0.0075;   // allowance for oracle divergence (taker vs maker)
+// Favourable mid — used ONLY for "is this offer fillable at all?", so a
+// genuinely-good but thin offer is not falsely hard-blocked on oracle noise.
 function swViableMid(side) { return side === 0 ? swLastMid * (1 - SW_ORACLE_TOL) : swLastMid * (1 + SW_ORACLE_TOL); }
+// The minimum XNO to sell to clear the maker's 30-bps gate. Our oracle mid can
+// read a little more favourable than the maker's, and the two are fetched
+// independently, so we compute at our OWN mid and add a +50% margin: better to
+// ask for a bit more than to bounce off a sub-minimum decline. Returns a BigInt
+// raw, or null only if the offer cannot price at any size even favourably.
+function swMinViableRaw(priceE9, side) {
+  const TP = window.XnoxmrTwoParty; if (!TP || !swLastMid) return null;
+  let m = TP.minViableXnoRaw(priceE9, side === 0, swLastMid, null, CERT.MIN_ACCEPT_BPS);
+  if (m === null) m = TP.minViableXnoRaw(priceE9, side === 0, swViableMid(side), null, CERT.MIN_ACCEPT_BPS);
+  return m === null ? null : (BigInt(m) * 3n) / 2n;
+}
 const raw2 = (raw, scale) => { const t = BigInt(raw).toString().padStart(scale + 1, "0"); return ((t.slice(0, -scale) + "." + t.slice(-scale)).replace(/0+$/, "").replace(/\.$/, "")) || "0"; };
 let tpPending = null;
 function tpResetReview() { tpPending = null; if ($("tpTake")) $("tpTake").textContent = "Review swap"; }
@@ -4019,7 +4032,7 @@ function tpMinSell() {
   try {
     const TP = window.XnoxmrTwoParty;
     if (!TP || !swSelected || !swLastMid) return null;
-    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swViableMid(swSelected.intent.side), null, CERT.MIN_ACCEPT_BPS);
+    const minRaw = swMinViableRaw(swSelected.intent.price_e9, swSelected.intent.side);
     if (!minRaw) return null;
     const minXno = Number(BigInt(minRaw) / (10n ** 24n)) / 1e6;
     if (swSide === "xno") return { amt: Math.ceil(minXno * 100) / 100, coin: "XNO" };
@@ -4158,7 +4171,16 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     await tpRun(hs, deal, roleIsA, String(deal.offerHash).toLowerCase() + "-T", tpLog, "taker", extDest);
     tpLog("swap complete ✓ — " + (roleIsA ? "XMR" : "XNO") + " sent to " + extDest.slice(0, 12) + "…" + extDest.slice(-6));
     swOffersRefresh(true);
-  } catch (e) { tpLog("stopped: " + (e && e.message || e)); }
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    // A size-based decline is normal and actionable — the fill is below the
+    // maker's fee+margin floor. Say so plainly instead of the raw "net -N bps".
+    if (e && e.declined && /below the .*required|is below the/i.test(msg)) {
+      const mn = (typeof tpMinSell === "function") ? tpMinSell() : null;
+      tpLog("Too small for the maker right now — this fill doesn't cover the maker's fee + margin." + (mn ? (" Try at least " + mn.amt + " " + mn.coin + " (tap the minimum hint below).") : " Increase the amount and try again.") + " Larger fills clear the fee.");
+      try { tpAmtErr(true, mn); } catch (e2) {}
+    } else { tpLog("stopped: " + msg); }
+  }
   finally { window.__tpTakeRunning = false; $("tpTake").disabled = false; tpResetReview(); }
 };
 if ($("tpDest")) $("tpDest").addEventListener("input", () => { tpResetReview(); tpBtnSync(); });
