@@ -301,11 +301,53 @@ about proving the protocol, the next step is `docs/BETA-CHECKLIST.md`, by hand.
 | `XNOXMR_WORK_URL` | `https://www.nearinstant.xyz` (PoW proxy; without it ~156 s/block) |
 | `XNOXMR_NANO_NODES` | three public nodes, comma-separated |
 | `XNOXMR_STATE` | `.xnoxmr-agent.json` |
+| `XNOXMR_STATE_DIR` | `.xnoxmr-wallet` (per-agent scan cache + in-flight swap sessions) |
 | `XNOXMR_XMR_LIQUIDITY` | XMR you can fund for **side-1** offers (else side 1 refuses to post) |
 | `XNOXMR_NANO_WS` | Nano websocket for `watch` (default `wss://ws.nano.to`) |
 | `XNOXMR_TICK_MS` | `watch` fallback tick interval, ms (default 180000) |
 | `XNOXMR_TICK_TIMEOUT_MS` | `watch` stuck-tick guard release, ms (default 900000) |
 | `XNOXMR_NANO_RPC_KEY` | nano.to API key — sent to rpc.nano.to (header + body) and ws.nano.to (`?key=`) |
+
+## Running more than one agent on the same machine
+
+Every agent is an independent maker keyed by its **own Nano seed**. Give each
+one a distinct identity and its own on-disk state so they never share a beacon,
+a rendezvous, or a swap-session file:
+
+```bash
+# agent A
+XNOXMR_MAKER_SEED=<seedA> \
+XNOXMR_STATE=~/.xnoxmr/A.json  XNOXMR_STATE_DIR=~/.xnoxmr/A.wallet \
+  node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 0 --live
+
+# agent B (separate seed, separate files)
+XNOXMR_MAKER_SEED=<seedB> \
+XNOXMR_STATE=~/.xnoxmr/B.json  XNOXMR_STATE_DIR=~/.xnoxmr/B.wallet \
+  node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 1 --live
+```
+
+Why this is enough to isolate them:
+
+- **Beacon / offers** are addressed to the maker's seed account, so A never
+  sees or reprices B's offers (the `watch` loop filters live offers to `maker
+  === me`).
+- **Rendezvous** boxes are derived from the *offer's* block hash, so a take for
+  A's offer lands only in A's rendezvous, never B's.
+- **The accept is now signed.** The maker signs `(offerHash || its ephemeral
+  key)` with the offer's account key, and the taker verifies that signature
+  against the account that posted the offer before locking anything. A party
+  that squats a rendezvous slot cannot impersonate another agent's offer — the
+  taker rejects any accept not signed by the real poster. This closes the one
+  unauthenticated gap that previously kept isolation from being total; funds
+  were always safe (atomic + price-bound), and now the handshake is
+  authenticated end to end.
+- **State files** (`XNOXMR_STATE`, `XNOXMR_STATE_DIR`) must differ, or two
+  agents would fight over the same scan cache and in-flight session records.
+  Point each at its own path as shown above.
+
+Both sides need this build for the signed handshake to be enforced: after
+pulling, an updated taker will refuse an accept from a maker still on an old
+build (it looks unsigned). Run `git pull` on every co-located agent together.
 
 ## Run fully self-hosted (local PoW & nodes)
 

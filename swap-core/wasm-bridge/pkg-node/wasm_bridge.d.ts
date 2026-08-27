@@ -233,6 +233,18 @@ export function make_pof(seed_hex: string, amount_raw: string, as_of_block: bigi
 export function make_test_order(now_secs: bigint): string;
 
 /**
+ * Verify a completed 64-byte signature as a real Nano signature for
+ * `account` over `message`.
+ * Sign an arbitrary message with the ed25519-blake2b key derived from
+ * `seed_hex` (the same key as the Nano account for that seed). The signature
+ * verifies with `nano_check(account, message, sig)`. Used to AUTHENTICATE the
+ * rendezvous handshake: the maker signs (offer hash || its ephemeral pubkey)
+ * so a taker can bind the reply to the account that posted the offer, closing
+ * the unauthenticated-ECDH MITM window. Returns 64 bytes, or empty on failure.
+ */
+export function msg_sign(seed_hex: string, message: Uint8Array): Uint8Array;
+
+/**
  * Decode a `nano_…`/`xrb_…` address to its 32-byte public key (empty on error).
  */
 export function nano_address_decode(addr: string): Uint8Array;
@@ -242,10 +254,6 @@ export function nano_address_decode(addr: string): Uint8Array;
  */
 export function nano_address_encode(public_key: Uint8Array): string;
 
-/**
- * Verify a completed 64-byte signature as a real Nano signature for
- * `account` over `message`.
- */
 export function nano_check(account: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
 
 /**

@@ -37,6 +37,7 @@ export const make_order: (a: number, b: bigint, c: bigint, d: bigint, e: bigint)
 export const make_order_seeded: (a: number, b: number, c: number, d: bigint, e: bigint, f: bigint, g: bigint, h: number, i: number) => [number, number];
 export const make_pof: (a: number, b: number, c: number, d: number, e: bigint, f: bigint, g: bigint) => [number, number];
 export const make_test_order: (a: bigint) => [number, number];
+export const msg_sign: (a: number, b: number, c: number, d: number) => [number, number];
 export const nano_address_decode: (a: number, b: number) => [number, number];
 export const nano_address_encode: (a: number, b: number) => [number, number];
 export const nano_check: (a: number, b: number, c: number, d: number, e: number, f: number) => number;

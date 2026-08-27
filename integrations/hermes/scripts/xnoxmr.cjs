@@ -634,7 +634,8 @@ CMDS.tick = async (args) => {
             act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - accepting");
             try {
               const cf = (dl) => certifyFor(st.offer.side, price)(dl);
-              const hs = await TP.makerPollTake(MB, relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), cf);
+              const authSign = (msg) => { try { return wasm.msg_sign(seed, msg); } catch (e) { return null; } };
+              const hs = await TP.makerPollTake(MB, relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), cf, authSign);
               if (hs && hs.deal && hs.shared) {
                 const offerSnap = st.offer;
                 const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, note);

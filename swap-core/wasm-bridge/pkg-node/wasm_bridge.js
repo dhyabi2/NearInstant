@@ -671,6 +671,31 @@ function make_test_order(now_secs) {
 exports.make_test_order = make_test_order;
 
 /**
+ * Verify a completed 64-byte signature as a real Nano signature for
+ * `account` over `message`.
+ * Sign an arbitrary message with the ed25519-blake2b key derived from
+ * `seed_hex` (the same key as the Nano account for that seed). The signature
+ * verifies with `nano_check(account, message, sig)`. Used to AUTHENTICATE the
+ * rendezvous handshake: the maker signs (offer hash || its ephemeral pubkey)
+ * so a taker can bind the reply to the account that posted the offer, closing
+ * the unauthenticated-ECDH MITM window. Returns 64 bytes, or empty on failure.
+ * @param {string} seed_hex
+ * @param {Uint8Array} message
+ * @returns {Uint8Array}
+ */
+function msg_sign(seed_hex, message) {
+    const ptr0 = passStringToWasm0(seed_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray8ToWasm0(message, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.msg_sign(ptr0, len0, ptr1, len1);
+    var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v3;
+}
+exports.msg_sign = msg_sign;
+
+/**
  * Decode a `nano_…`/`xrb_…` address to its 32-byte public key (empty on error).
  * @param {string} addr
  * @returns {Uint8Array}
@@ -707,8 +732,6 @@ function nano_address_encode(public_key) {
 exports.nano_address_encode = nano_address_encode;
 
 /**
- * Verify a completed 64-byte signature as a real Nano signature for
- * `account` over `message`.
  * @param {Uint8Array} account
  * @param {Uint8Array} message
  * @param {Uint8Array} signature

@@ -234,6 +234,8 @@
     font-family:inherit;font-size:1.02rem;font-weight:800;letter-spacing:.02em;cursor:pointer;overflow:hidden;margin-top:1.1rem}
   .btn.dark{background:var(--ink)}
   .btn:disabled{background:#bbb;border-color:#999;cursor:default}
+  /* action needed before you can proceed (unlock wallet / enter address) */
+  .btn.btn-need{background:#fff;color:var(--ink);font-size:.9rem}
   .btn .fill{position:absolute;inset:0;width:0%;background:rgba(255,255,255,.25);transition:width .3s}
   .btn .txt{position:relative;z-index:1}
   .btn.done{background:#0b0b0b}
@@ -272,6 +274,42 @@
   .obk .ep.on{background:var(--ink);color:#fff}
   .obk .ep.on .lat{color:#bbb}
   .obk-sel{font-size:.78rem;font-weight:750;margin-top:.45rem;border-top:2px solid var(--ink);padding-top:.45rem}
+  .swrates{font-size:.72rem;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;
+    margin-top:.5rem;padding-top:.4rem;border-top:1.5px dashed #dcdcdc;letter-spacing:.01em}
+  .swrates .rlbl{font-size:.6rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .swrates b{color:var(--ink);font-weight:800}
+  /* dual pay/get amount inputs with a direction arrow */
+  .pgpair{display:flex;flex-direction:column;gap:.35rem}
+  .pgrow{display:flex;align-items:center;gap:.5rem;border:2px solid var(--ink);background:#fff;padding:.5rem .6rem}
+  .pgrow .pglbl{font-size:.6rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);flex:0 0 auto;width:3rem}
+  .pgrow input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:ui-monospace,monospace;font-weight:800;font-size:1.05rem;padding:0;color:var(--ink)}
+  .pgrow .pgcoin{flex:0 0 auto;font-weight:850;font-size:.82rem;letter-spacing:.02em}
+  .pgarrow{text-align:center;font-weight:900;font-size:1.05rem;color:var(--burnt);line-height:.5;margin:-.05rem 0}
+  .pgrow.err{border-color:#c0392b}
+  .pgrow.err input{color:#c0392b}
+  .pgrow input::placeholder{color:#b6b6b6;font-weight:700}
+  .pgrow.err input::placeholder{color:#c0392b}
+  .amt-min{display:none;font-size:.74rem;font-weight:800;color:#c0392b;margin-top:.3rem;cursor:pointer;text-decoration:underline}
+  .amt-min.show{display:block}
+  /* swap-direction: two BIG monochrome radio cards — the selected one is unmissable */
+  .swside{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;width:100%}
+  .swside button{display:flex;align-items:center;gap:.75rem;padding:.95rem 1rem;border:2px solid var(--ink);
+    background:#fff;color:var(--ink);font-family:inherit;cursor:pointer;text-align:left;box-shadow:3px 3px 0 var(--ink);
+    transition:transform .06s ease}
+  .swside button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+  .swside .rad{width:1.4rem;height:1.4rem;border:2.5px solid var(--ink);border-radius:50%;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;background:#fff}
+  .swside .rad i{width:.68rem;height:.68rem;border-radius:50%;background:transparent;display:block}
+  .swside .t{display:flex;flex-direction:column;line-height:1.2}
+  .swside .t small{font-size:.66rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .swside .t span{font-weight:850;font-size:1.05rem;letter-spacing:-.01em}
+  .swside button.on{background:var(--ink);color:#fff}
+  .swside button.on .rad{border-color:#fff;background:var(--ink)}
+  .swside button.on .rad i{background:#fff}
+  .swside button.on .t small{color:#cfcfcf}
+  @media (max-width:560px){.swside{grid-template-columns:1fr}}
+  .swaggnote{font-size:.68rem;line-height:1.4;color:var(--faint);font-weight:600;margin-top:.4rem}
+  .swaggnote b{color:var(--burnt);font-weight:800}
   .dot{width:.55rem;height:.55rem;background:#cfcfcf;flex:0 0 auto}
   .dot.ok{background:#0b0b0b} .dot.bad{background:#fff;border:2px solid #0b0b0b} .dot.chk{background:#c9c9c9}
   .url{flex:1;min-width:0;font-size:.72rem;word-break:break-all;font-family:ui-monospace,monospace}
@@ -309,6 +347,9 @@
     color:#8a5a00;background:#fff6e8;border:1.5px solid #e6b25c;padding:.16rem .42rem;flex:0 0 auto}
   .oempty .ecta{margin-top:.9rem;font-size:.8rem;font-weight:750;color:var(--ink);border-top:2px solid var(--ink);padding-top:.7rem}
   .oempty .ecta b{color:var(--burnt)}
+  .ecta-btn{width:100%;font-family:inherit;font-weight:850;font-size:.92rem;padding:.7rem 1rem;border:2px solid var(--ink);
+    background:var(--ink);color:#fff;cursor:pointer;box-shadow:3px 3px 0 var(--ink);transition:transform .06s ease}
+  .ecta-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
   .rm:hover{color:var(--burnt)}
   .add{display:flex;gap:.4rem;margin-top:.4rem}
   .add input{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:.72rem;padding:.4rem .5rem;border:2px solid var(--ink);background:#fff}
@@ -497,8 +538,11 @@
         <!-- ===================== SWAP (default) ===================== -->
         <div class="view" id="viewSwap">
           <div class="field coinsel" style="max-width:none;margin-bottom:.6rem">
-            <span class="lbl">You sell</span>
-            <div class="seg" id="swSideSel"><button data-s="xmr" class="on">Monero → get Nano</button><button data-s="xno">Nano → get Monero</button></div>
+            <span class="lbl">Choose your swap direction</span>
+            <div class="swside" id="swSideSel" role="radiogroup" aria-label="Swap direction">
+              <button data-s="xmr" class="on" role="radio" aria-checked="true"><span class="rad"><i></i></span><span class="t"><small>You sell Monero</small><span>XMR → XNO</span></span></button>
+              <button data-s="xno" role="radio" aria-checked="false"><span class="rad"><i></i></span><span class="t"><small>You sell Nano</small><span>XNO → XMR</span></span></button>
+            </div>
           </div>
 
           <!-- Stage 3: live order book (reads scanLive, cheapest first) -->
@@ -506,17 +550,37 @@
             <div class="obk-head"><span class="lbl" style="margin:0">Live offers · best price first</span><button class="obk-ref" id="swOffersRef">Refresh</button></div>
             <div id="swOffers" class="obk-list">Reading live offers from the ledger…</div>
             <div class="obk-sel hidden" id="swSel"></div>
+            <div class="swrates" id="swRates" style="display:none"></div>
+            <div class="swaggnote">KYC-free swap aggregators typically take <b>1–5%</b> per trade. Here the price you see is the price you get — <b>no added fees, no spread on top</b> — and every swap settles atomically or your coins come straight back.</div>
           </div>
 
           <!-- peer: REAL two-party swap with ANOTHER person's browser over the
                serverless ledger relay. Only reachable when ?twoparty=1. -->
           <div id="twoPartyPanel" style="margin-top:.4rem">
             <div class="sub" style="margin-top:.2rem">Pick a live offer above, enter how much you want to sell, review the exact amounts, then confirm. Settlement is atomic — the other side gets paid only if you do. <b>Experimental: no third-party audit yet, use small amounts.</b> Keep this page open until it says <i>complete</i>; the steps are saved on this device.</div>
-            <div class="add" style="margin-top:.5rem">
-              <input id="tpAmount" inputmode="decimal" placeholder="amount of XMR to sell" autocomplete="off">
+            <div class="pgpair" style="margin-top:.5rem">
+              <div class="pgrow"><span class="pglbl">You pay</span><input id="tpAmount" inputmode="decimal" placeholder="0.00" autocomplete="off"><span class="pgcoin" id="tpPayCoin">XMR</span></div>
+              <div class="pgarrow" id="tpArrow">↓</div>
+              <div class="pgrow"><span class="pglbl">You get</span><input id="tpGet" inputmode="decimal" placeholder="0.00" autocomplete="off"><span class="pgcoin" id="tpGetCoin">XNO</span></div>
             </div>
+            <div class="amt-min" id="tpMinHint"></div>
+            <div class="add" style="margin-top:.4rem">
+              <input id="tpDest" placeholder="your Monero address to receive at (4… / 8…)" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="sub" id="tpDestNote" style="margin-top:.25rem;font-size:.72rem">Your received coins are sent straight to this external address — they never stay in this page's wallet.</div>
             <div class="obk-sel" id="tpQuote" style="margin-top:.4rem">Pick an offer and enter an amount to see the exact quote.</div>
             <button id="tpTake" class="btn" style="margin-top:.6rem">Review swap</button>
+            <div id="tpDeposit" style="display:none;margin-top:.6rem;border:2px solid var(--ink);background:#fff;box-shadow:4px 4px 0 var(--ink);padding:.9rem">
+              <div style="font-weight:850;font-size:.95rem" id="tpDepTitle">Fund your swap</div>
+              <div class="sub" id="tpDepMsg" style="margin-top:.25rem"></div>
+              <canvas id="tpDepQr" style="margin:.6rem auto .2rem;display:block;image-rendering:pixelated;background:#fff;padding:6px"></canvas>
+              <div class="mono" id="tpDepAddr" style="margin-top:.5rem;font-size:.72rem;word-break:break-all;border:2px solid var(--ink);padding:.5rem;background:#f7f7f7;user-select:all"></div>
+              <div style="display:flex;gap:.5rem;margin-top:.5rem">
+                <button id="tpDepCopy" style="font-family:inherit;font-weight:800;font-size:.78rem;padding:.4rem .8rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Copy address</button>
+                <button id="tpDepCancel" style="font-family:inherit;font-weight:800;font-size:.78rem;padding:.4rem .8rem;border:2px solid var(--ink);background:#fff;cursor:pointer">Cancel</button>
+              </div>
+              <div class="sub" id="tpDepStatus" style="margin-top:.55rem;font-weight:800;color:var(--burnt)"></div>
+            </div>
             <pre class="swlog" id="tpLog" style="margin-top:.5rem;max-height:16rem;overflow:auto">idle</pre>
             <details style="margin-top:.6rem">
               <summary class="hint" style="cursor:pointer">I posted an offer myself (maker tools)</summary>
@@ -608,8 +672,8 @@
           <div class="glab" style="margin-top:1.2rem">Certified win, or no action</div>
           <div class="sub" style="margin-top:.3rem">Every offer, every accepted take, and every irreversible step is checked to be profitable at the live market — after fees, with active volatility monitoring and an unrealised-loss limit — or it is refused. It never acts on an unverified or fast-moving price.</div>
 
-          <div class="glab" style="margin-top:1.2rem">Settlement stays supervised for now</div>
-          <div class="sub" style="margin-top:.3rem">Hermes can also settle a swap end-to-end autonomously, but that path is <b>off by default and unproven</b>: settlement takes 25–40 minutes on Monero confirmations, and a process that dies partway must resume to recover. Until a swap has completed on-chain between two parties under supervision, Hermes hands each certified take to a human to settle from this page. Automate the watching and the pricing; keep a person on the money.</div>
+          <div class="glab" style="margin-top:1.2rem">Settlement is autonomous, end to end</div>
+          <div class="sub" style="margin-top:.3rem">Hermes settles each certified take itself — <b>on by default</b>: it runs the full 25–40 minute settlement (Monero confirmations included), and if the process dies partway it auto-resumes on the next tick, completing, refunding, or recovering. Every irreversible step is still certified against the live market, so a losing or fast-moving deal aborts safely. Prefer a person on the money? Set <span class="mono">XNOXMR_AUTOSETTLE=0</span> and certified takes are handed to a human instead.</div>
 
           <div class="glab" style="margin-top:1.2rem">Run it fully self-hosted (local proof-of-work &amp; nodes)</div>
           <div class="sub" style="margin-top:.3rem">By default Hermes uses this site's proof-of-work helper and public RPC nodes. For full independence — no third party in the loop — point it at your own:</div>
@@ -644,7 +708,7 @@
         <div class="view hidden" id="viewFaq" style="margin-top:1rem">
           <details class="faq"><summary>Why is joining early better?</summary><div class="a">One honest reason: <b>less competition</b>. Swappers always take the best-priced live offer; when few people are providing, more of the trades flow through <i>your</i> coins. There are no levels, ranks or priority — nothing is granted for tenure. It is <b>not a guaranteed return</b>: no trades, no earnings.</div></details>
           <details class="faq"><summary>Can you take or freeze my coins?</summary><div class="a">No. This runs entirely in your browser with <b>no server of ours in the middle</b>. Your key is generated here, encrypted with your passphrase (memory-hard Argon2id → AES-256-GCM), and never leaves this device. A swap is enforced by cryptography, 2-of-2 joint accounts and adaptor signatures, not by trusting us or anyone else.</div></details>
-          <details class="faq"><summary>What if a swap fails, or I close the browser mid-swap?</summary><div class="a">Every completed step is saved on your device and no step can run twice. A swap is listed under <i>Unfinished swaps</i> on the Swap tab with the joint addresses and the last saved step; the final step (sweeping your Monero) resumes with one tap, but the co-signing steps in the middle need both browsers back at the same time — so keep the page open until it says complete, and use small amounts.</div></details>
+          <details class="faq"><summary>What if a swap fails, or I close the browser mid-swap?</summary><div class="a">Every completed step is saved on your device and no step can run twice. If anything fails mid-swap, recovery is automatic: reopen the page (wallet unlocked) and the swap under <i>Unfinished swaps</i> auto-resumes — it completes, takes the built-in refund so your XNO comes back, or reclaims your locked XMR from the counterparty’s refund. If the other side vanishes, your side refunds itself after a timeout. Still: keep the page open during a swap and use small amounts while this is young.</div></details>
           <details class="faq"><summary>Do I need an account, email, or ID?</summary><div class="a">None. No sign-up, no KYC. You just choose a passphrase, which encrypts a wallet held only in this browser.</div></details>
           <details class="faq"><summary>What are the fees?</summary><div class="a">We charge <b>no platform fee</b>. Nano is feeless; the only cost is Monero's small network fee. When you earn, you keep the spread the people trading through you pay.</div></details>
           <details class="faq"><summary>How is the XNO/XMR price decided? Who sets it?</summary><div class="a"><b>Nobody central.</b> It's a peer-to-peer order book. When you <b>provide</b>, your offer is priced from the live market rate plus a spread that scales with volatility. When you <b>swap</b>, you pick the best offer that's open. The app may show the going market price from a reference exchange as a guide, but nobody is forced to use it, if an offer is priced badly, traders just pick another. That's what keeps it trustless: there is no rate-setter to trust.</div></details>
@@ -1215,6 +1279,15 @@ async function priceCoingecko() {
   if (!(xno > 0) || !(xmr > 0)) throw new Error("bad coingecko");
   return { ratio: xno / xmr, xnoUsd: xno, xmrUsd: xmr };   // XMR per 1 XNO + USD legs
 }
+async function priceCoincap() {
+  const [a, b] = await Promise.all([
+    fetchJson("https://api.coincap.io/v2/assets/nano"),
+    fetchJson("https://api.coincap.io/v2/assets/monero"),
+  ]);
+  const xno = parseFloat(a && a.data && a.data.priceUsd), xmr = parseFloat(b && b.data && b.data.priceUsd);
+  if (!(xno > 0) || !(xmr > 0)) throw new Error("bad coincap");
+  return { ratio: xno / xmr, xnoUsd: xno, xmrUsd: xmr };
+}
 async function priceCoinpaprika() {
   const [a, b] = await Promise.all([
     fetchJson("https://api.coinpaprika.com/v1/tickers/nano-nano"),
@@ -1313,7 +1386,7 @@ async function marketPrice() {
 }
 async function marketPriceUncached() {
   const got = [], xnoUsds = [], xmrUsds = [];
-  for (const f of [priceCoingecko, priceCoinpaprika]) {
+  for (const f of [priceCoingecko, priceCoinpaprika, priceCoincap]) {
     try {
       const r = await f(); const p = r.ratio;
       if (p > SMART.SANE_MIN && p < SMART.SANE_MAX) {
@@ -1375,7 +1448,7 @@ async function smartStart(resumeCoin) {
   const btn = $("smartBtn");
   if (smartState && smartState.running) return;
   let addrMain = null; try { addrMain = walletApi && walletApi.address(); } catch (e) {}
-  if (!addrMain) { $("smartNote").textContent = "Unlock your wallet first — Smart Offer needs to know which coin you hold."; appView("wallet"); return; }
+  if (!addrMain) { $("smartNote").textContent = "Unlock your wallet first — Smart Offer needs to know which coin you hold."; appReturnView = "earn"; appView("wallet"); return; }
   btn.disabled = true; $("smartNote").textContent = "Starting the offering engine…";
   try { await expInit(); await tpEnsure(); } catch (e) {}
   if (!expBeacon || !expWasm || !window.XnoxmrTwoParty) { btn.disabled = false; $("smartNote").textContent = "Could not load the offering engine. Please try again."; return; }
@@ -1407,6 +1480,7 @@ async function smartStart(resumeCoin) {
   }
   smartTick();
   smartTimer = setInterval(smartTick, SMART.POLL_MS);
+  smartWatchRv();
 }
 function smartUnloadGuard(e) {
   if (smartState && smartState.running) { e.preventDefault(); e.returnValue = "Smart Offer is running — your offer resumes when you reopen, but a settlement in progress needs this page."; }
@@ -1460,6 +1534,37 @@ async function smartWithdraw(coinOverride) {
 // for a take-request. When one arrives, validate it against OUR posted price
 // and size, run the joint ceremony and the maker's settlement driver, record
 // the fill, then re-post a fresh offer (new block ⇒ new rendezvous).
+// Realtime accept: a take-request is an ON-CHAIN send to the offer's
+// rendezvous account. Watch that account over the Nano websocket and tick the
+// moment it fires, instead of making the taker wait out the 30 s poll.
+let smartWs = null, smartWsWatched = "", smartWsNudge = 0;
+async function smartWsSub() {
+  try {
+    if (!smartState || !smartState.running || !smartState.offerHash) return;
+    if (!smartWs || smartWs.readyState !== 1) return;
+    const mb = window.XnoxmrTwoParty.rvBox(smartState.offerHash);
+    const hex = await tpRelay().mailboxAccountHex(mb);
+    const addr = expWasm.nano_address_encode(hexToBytes(hex));
+    if (addr === smartWsWatched) return;
+    smartWs.send(JSON.stringify({ action: "subscribe", topic: "confirmation", options: { accounts: [addr] } }));
+    smartWsWatched = addr;
+  } catch (e) {}
+}
+function smartWatchRv() {
+  if (!smartWs) {
+    try { smartWs = new WebSocket("wss://ws.nano.to"); } catch (e) { return; }
+    smartWs.onopen = () => { smartWsWatched = ""; smartWsSub(); };
+    smartWs.onmessage = () => {
+      const n = Date.now();
+      if (n - smartWsNudge > 3000 && smartState && smartState.running && !smartState.settling) { smartWsNudge = n; smartTick(); }
+    };
+    smartWs.onclose = () => { smartWs = null; setTimeout(() => { if (smartState && smartState.running) smartWatchRv(); }, 5000); };
+    smartWs.onerror = () => { try { smartWs.close(); } catch (e) {} };
+  }
+  smartWsSub();
+}
+setInterval(smartWsSub, 10000);   // re-subscribe when the offer block changes (repost/reprice)
+setInterval(() => { try { if (smartWs && smartWs.readyState === 1) smartWs.send(JSON.stringify({ action: "ping" })); } catch (e) {} }, 30000);   // keepalive: ws.nano.to drops idle sockets
 async function smartPollTake() {
   const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
   if (!TP || !M || !smartState.offerHash) return false;
@@ -1669,6 +1774,7 @@ showHook(0); restartSlider();
 
 // One box, three views, Earn / Swap / Wallet. The top-bar modes and the app
 // tabs both drive the same switch; the machine + funds strip stay put.
+let appReturnView = null;   // view to return to after an unlock-bounce to Wallet
 function appView(v) {
   ["earn", "swap", "wallet", "agent", "faq", "settings"].forEach(k => { const el = $("view" + k[0].toUpperCase() + k.slice(1)); if (el) el.classList.toggle("hidden", k !== v); });
   $("appTabs").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === v));
@@ -1682,6 +1788,7 @@ function appView(v) {
   if (strip) strip.classList.toggle("hidden", aux);
   if (v === "settings" && typeof settingsRenderOnce === "function") settingsRenderOnce();
   if (v === "swap" && typeof swOffersRefresh === "function") swOffersRefresh();
+  if (typeof bookLiquidityRefresh === "function") bookLiquidityRefresh();
 }
 $("appTabs").querySelectorAll("button").forEach(b => b.onclick = () => appView(b.dataset.v));
 
@@ -1814,6 +1921,14 @@ async function walletRefresh(receiveFirst) {
 
 async function walletAfterOpen() {
   walletShell();
+  if (typeof tpBtnSync === "function") tpBtnSync();   // wallet now open → refresh the swap action button
+  // Return the user to where the unlock-bounce came from (Swap/Earn) — being
+  // sent to Wallet to unlock must not lose their place mid-flow.
+  if (appReturnView) {
+    const v = appReturnView; appReturnView = null;
+    appView(v);
+    if (v === "swap") { try { tpBtnSync(); const a = $("tpAmount"); if (a) a.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }
+  }
   try { walletApi.liveReceive(() => walletRefresh(false)); } catch (e) {}
   // Show the Monero address for this wallet (same seed).
   try {
@@ -2139,6 +2254,7 @@ function swSideLabel() { return swSide === "xmr" ? "SELL MONERO → GET NANO" : 
 function swSideSetUI() {
   document.querySelectorAll("#swSideSel button").forEach(b => {
     b.classList.toggle("on", b.dataset.s === swSide);
+    b.setAttribute("aria-checked", b.dataset.s === swSide ? "true" : "false");
     b.disabled = false;
   });
 }
@@ -2146,6 +2262,7 @@ document.querySelectorAll("#swSideSel button").forEach(b => b.onclick = () => {
   if (b.dataset.s === swSide) return;
   swSide = b.dataset.s; try { localStorage.setItem("nearinstant_swap_side", swSide); } catch (e) {}
   swSelected = null;                       // the other side's offers are a different list
+  if ($("tpAmount")) $("tpAmount").value = ""; if ($("tpGet")) $("tpGet").value = "";
   swSideSetUI(); swRender();
   if (typeof tpQuoteRender === "function") tpQuoteRender();
   swOffersRefresh(true);
@@ -2172,6 +2289,25 @@ const SW_WORSE_BAND = 0.03;   // >3% worse than market for the taker ⇒ exclude
 const SW_BETTER_BAND = 0.25;  // better than market is welcome, up to 25% (sanity)
 let swLastMid = null;
 let swXnoUsd = null;   // live USD price of 1 XNO, from the same 2-source oracle
+let swXmrUsd = null;   // live USD price of 1 XMR (same oracle) — for the reference-rate strip
+// Precise dollar rate for the reference strip (cents kept): $0.40, $430.22.
+function fmtUsdRate(v) { return "$" + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Show "1 XNO ≈ $Y · 1 XMR ≈ $X" under the book so a dollar-thinking user has
+// the reference prices alongside the XMR/XNO offers. Fail-quiet if no oracle.
+function swRatesRender() {
+  const el = $("swRates"); if (!el) return;
+  el.textContent = "";
+  if (!(swXnoUsd > 0) && !(swXmrUsd > 0)) { el.style.display = "none"; return; }
+  const lab = document.createElement("span"); lab.className = "rlbl"; lab.textContent = "Reference rates"; el.append(lab);
+  const add = (coin, usd) => {
+    if (!(usd > 0)) return;
+    el.append(document.createTextNode("   "));
+    const b = document.createElement("b"); b.textContent = "1 " + coin; el.append(b);
+    el.append(document.createTextNode(" ≈ " + fmtUsdRate(usd)));
+  };
+  add("XNO", swXnoUsd); add("XMR", swXmrUsd);
+  el.style.display = "";
+}
 // Human dollar figure: cents under $100, whole dollars under $1k, then $1.2k.
 function fmtUsd(v) {
   if (!(v > 0)) return "";
@@ -2199,11 +2335,16 @@ function swFairness(priceE9, side) {
   // Always phrased from the taker's side, in plain words: a signed percentage
   // against a mid is ambiguous once the sign flips per side.
   const pct = Math.abs(d * 100).toFixed(1);
+  // SAFETY warnings always shown: a badly-off offer (manipulated/scam) or a
+  // suspiciously-good one must be flagged, or a taker could walk into a loss.
   if (d > SW_WORSE_BAND) return " · ⚠ " + pct + "% worse than market";
   if (d < -SW_BETTER_BAND) return " · ⚠ " + pct + "% better than market — check this is real";
+  // Good news is shown; a genuinely at-market price is shown. A mild "worse"
+  // (the normal maker spread) is NOT labelled — we don't nag, and we never
+  // dress it up as "at market" either (that would be the dishonest move).
   if (d < -0.005) return " · " + pct + "% better than market";
-  if (d > 0.005) return " · " + pct + "% worse than market";
-  return " · at market";
+  if (d <= 0.005) return " · at market";
+  return "";
 }
 function swSelRender(o) {
   const sel = $("swSel");
@@ -2234,7 +2375,8 @@ function swAgo(sec) {
 // (decoded price + amount + age) so the market reads as quiet, not broken.
 async function swRenderEmpty(box, raw, side) {
   box.className = ""; box.innerHTML = "";
-  try { const pr = await marketPrice(); if (pr && pr.ok && pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; } catch (e) {}
+  try { const pr = await marketPrice(); if (pr && pr.ok) { if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; if (pr.xmrUsd > 0) swXmrUsd = pr.xmrUsd; } } catch (e) {}
+  swRatesRender();
   const wrap = document.createElement("div"); wrap.className = "oempty";
   const h = document.createElement("h4");
   const dot = document.createElement("span"); dot.className = "dot"; h.append(dot);
@@ -2280,12 +2422,53 @@ async function swRenderEmpty(box, raw, side) {
       });
     }
   }
+  // No Earn/maker link here — a taker on the Swap tab wants to SWAP, and
+  // pointing them at market-making mid-flow conflates the two roles. The one
+  // useful action is switching direction when the OTHER side has live offers.
   const cta = document.createElement("div"); cta.className = "ecta";
-  if (raw.length) cta.append(document.createTextNode("Want to trade now? "));
-  const b2 = document.createElement("b"); b2.textContent = "Post a fresh offer from Earn → Smart Offer"; cta.append(b2);
-  cta.append(document.createTextNode(" — it goes live instantly, for 10 minutes."));
+  let other = 0;
+  try { other = (await expBeacon.scanLive(rpcState.nano, "XNO/XMR", side === 0 ? 1 : 0, OFFER_TTL_SECS)).length; } catch (e) {}
+  if (other > 0) {
+    const bt = document.createElement("button"); bt.className = "ecta-btn";
+    bt.textContent = other + " live offer" + (other > 1 ? "s" : "") + " in the other direction — switch";
+    bt.onclick = () => { const b = document.querySelector('#swSideSel button[data-s="' + (swSide === "xmr" ? "xno" : "xmr") + '"]'); if (b) b.click(); };
+    cta.append(bt);
+  } else {
+    cta.textContent = "Offers appear the moment a maker comes online — this list refreshes automatically.";
+    cta.style.fontWeight = "600"; cta.style.color = "var(--faint)";
+  }
   wrap.append(cta);
   box.append(wrap);
+}
+// Live-book liquidity total, shown under the machine (the "liquidity pools"
+// drawing). Independent of the local wallet: it sums the LIVE offers on both
+// sides so the amount/total shows even when the wallet is locked or the offers
+// are being run by the agent. side 0 = XNO for sale; side 1 = XMR for sale
+// (size is in XNO, so XMR = size×price).
+let __bookLiqAt = 0;
+async function bookLiquidityRefresh(force) {
+  const el = $("machineQuiet"); if (!el) return;
+  if (!force && Date.now() - __bookLiqAt < 30000) return;
+  __bookLiqAt = Date.now();
+  try {
+    await expInit();
+    if (!expBeacon || typeof expBeacon.scanLive !== "function") return;
+    const [s0, s1] = await Promise.all([
+      expBeacon.scanLive(rpcState.nano, "XNO/XMR", 0, OFFER_TTL_SECS),
+      expBeacon.scanLive(rpcState.nano, "XNO/XMR", 1, OFFER_TTL_SECS),
+    ]);
+    try { const pr = await marketPrice(); if (pr && pr.ok) { if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; if (pr.xmrUsd > 0) swXmrUsd = pr.xmrUsd; } } catch (e) {}
+    const xnoForSale = s0.reduce((a, o) => a + swSizeXno(o.intent.size_log2), 0);
+    const xmrForSale = s1.reduce((a, o) => a + swSizeXno(o.intent.size_log2) * (o.intent.price_e9 / 1e9), 0);
+    const usd0 = swXnoUsd > 0 ? xnoForSale * swXnoUsd : 0;
+    const usd1 = swXmrUsd > 0 ? xmrForSale * swXmrUsd : 0;
+    const total = usd0 + usd1;
+    if (!s0.length && !s1.length) { el.textContent = "Book is quiet — no live offers right now"; return; }
+    const parts = [];
+    if (s0.length) parts.push(swFmtXno(xnoForSale) + " XNO for sale" + (usd0 ? " (≈ " + fmtUsd(usd0) + ")" : ""));
+    if (s1.length) parts.push((xmrForSale >= 1 ? xmrForSale.toFixed(2) : xmrForSale.toPrecision(2)) + " XMR for sale" + (usd1 ? " (≈ " + fmtUsd(usd1) + ")" : ""));
+    el.textContent = "Live liquidity · " + parts.join("  +  ") + (total > 0 ? "  ·  total ≈ " + fmtUsd(total) : "");
+  } catch (e) { /* engine not loaded (single-file mode) — leave the caption empty */ }
 }
 async function swOffersRefresh(force) {
   const box = $("swOffers"); if (!box) return;
@@ -2311,7 +2494,8 @@ async function swOffersRefresh(force) {
     // Fail-closed market mid for the taker-side sanity guard (best-effort: the
     // list still shows if the price feed is unavailable, just without fairness).
     swLastMid = null;
-    try { const pr = await marketPrice(); if (pr && pr.ok) { swLastMid = pr.mid; if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; } } catch (e) {}
+    try { const pr = await marketPrice(); if (pr && pr.ok) { swLastMid = pr.mid; if (pr.xnoUsd > 0) swXnoUsd = pr.xnoUsd; if (pr.xmrUsd > 0) swXmrUsd = pr.xmrUsd; } } catch (e) {}
+    swRatesRender();
     box.className = "olist";
     const inBand = (o) => swInBand(o);
     const mk = (cls, txt) => { const e = document.createElement("div"); e.className = cls; if (txt != null) e.textContent = txt; return e; };
@@ -2328,7 +2512,12 @@ async function swOffersRefresh(force) {
       const p = mk("o-price", price + " "); const unit = mk("o-unit", "XMR / XNO"); unit.style.display = "inline";
       p.append(unit); main.append(p);
       const sizeStr = "~" + swFmtXno(sizeXno) + " XNO available";
-      const devStr = dev != null ? "  ·  " + (Math.abs(dev) < 0.005 ? "at market" : (Math.abs(dev * 100).toFixed(1) + "% " + (dev < 0 ? "better" : "worse"))) : "";
+      // Show "better" and "at market"; hide a mild "worse" (normal spread). The
+      // off-market safety case still shows via the card's "⚠ Off-market" badge.
+      const devStr = dev == null ? ""
+        : dev < -0.005 ? "  ·  " + Math.abs(dev * 100).toFixed(1) + "% better"
+        : dev <= 0.005 ? "  ·  at market"
+        : "";
       main.append(mk("o-sub", sizeStr + swUsdOf(sizeXno) + devStr));
       card.append(main);
 
@@ -2339,7 +2528,14 @@ async function swOffersRefresh(force) {
       if (o.maker) right.append(mk("o-maker", String(o.maker).slice(0, 12) + "…"));
       card.append(right);
 
-      card.onclick = () => { swSelected = o; swSelRender(o); box.querySelectorAll(".ocard").forEach(e => e.classList.remove("on")); card.classList.add("on"); };
+      card.onclick = () => { swSelected = o; swSelRender(o); box.querySelectorAll(".ocard").forEach(e => e.classList.remove("on")); card.classList.add("on");
+        // Wallet must be unlocked to swap — ask up front, on selection.
+        if (!tpWalletOpen()) { if (typeof tpLog === "function") tpLog("Unlock your wallet first to swap this offer — tap the button below."); }
+        if (typeof tpBtnSync === "function") tpBtnSync();
+        if (typeof tpSync === "function") tpSync("pay");   // fill the "get" box from the picked offer's price
+        // Move the cursor into the amount field and bring it into view.
+        const amt = $("tpAmount");
+        if (amt) { try { amt.focus({ preventScroll: true }); amt.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { try { amt.focus(); } catch (e2) {} } } };
       box.append(card);
     });
     // Auto-pick the cheapest offer that is IN-BAND vs market; never auto-select a
@@ -2358,7 +2554,14 @@ async function swOffersRefresh(force) {
   } catch (e) { box.textContent = "Could not read offers: " + e.message; }
 }
 $("swOffersRef").onclick = () => swOffersRefresh(true);
+setInterval(() => { try { if ($("viewSwap") && !$("viewSwap").classList.contains("hidden")) swOffersRefresh(); } catch (e) {} }, 30000);   // book auto-refresh on the Swap tab
 if ($("viewSwap") && !$("viewSwap").classList.contains("hidden")) swOffersRefresh(true);
+// The liquidity-pools caption reflects the LIVE book on every view (the machine
+// is the page's centrepiece), refreshed on load, on a timer, and on manual
+// book refresh — so the amount/total shows even with the wallet locked.
+$("swOffersRef").addEventListener("click", () => bookLiquidityRefresh(true));
+setTimeout(() => bookLiquidityRefresh(true), 1200);
+setInterval(() => bookLiquidityRefresh(), 45000);
 
 /* ---- stark monochrome progress ticker ---- */
 // Step labels adapt to the chosen direction; "◀ you receive" marks your payout.
@@ -2809,8 +3012,8 @@ async function certPrice() {
                    at: __midCache ? __midCache.at : Date.now() }
                : { ok: false, reason: pr.reason };
 }
-function tpDeps(store, note) {
-  return { wasm: walletWasm, xmr: swapXmr, beacon: expBeacon, urls: rpcState.nano,
+function tpDeps(store, note, xmrDest) {
+  return { wasm: walletWasm, xmr: swapXmr, beacon: expBeacon, urls: rpcState.nano, xmrDest: xmrDest || null,
            walletApi, moneroPost: swapMoneroPost(), note: note || tpLog, store, guard: USE_GUARD_LADDER,
            price: certPrice, minProfitBps: CERT.MIN_ACCEPT_BPS, abortBps: CERT.ABORT_BPS,
            maxUnrealizedLossBps: CERT_MAX_UNREALIZED_LOSS_BPS, maxStress: CERT_MAX_STRESS };
@@ -2828,13 +3031,22 @@ function tpIndexUpsert(id, patch) {
 function tpProviderAddress() { try { return JSON.parse(expWasm.seed_account(expSeed())).address; } catch (e) { return null; } }
 // Run one party's side of a person-to-person swap from a completed handshake:
 // ceremony → persist the party snapshot → settlement driver → history record.
-async function tpRun(hs, deal, roleIsA, sessionId, note, role) {
+async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
   const TP = window.XnoxmrTwoParty;
   const store = tpStore(sessionId);
   const rand = (n) => { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; };
   hs.wire.pollMs = 3000;
+  // Route the RECEIVED coin to the taker's external address (never the in-page
+  // wallet): role A receives XMR → sweep dest; role B receives XNO → claim dest
+  // (via myWalletAcct, which both parties co-sign the claim block to).
+  let myAcctHex = walletApi.account(), xmrDest = null;
+  if (extDest) {
+    if (roleIsA) xmrDest = String(extDest).trim();
+    else { const pk = walletWasm.nano_address_decode(String(extDest).trim());
+           if (pk && pk.length === 32) myAcctHex = Array.from(pk, b => b.toString(16).padStart(2, "0")).join(""); }
+  }
   note("running the joint ceremony…");
-  const party = await TP.ceremony(walletWasm, swapXmr, rand, "mainnet", hs.wire, roleIsA, deal, note, walletApi.account());
+  const party = await TP.ceremony(walletWasm, swapXmr, rand, "mainnet", hs.wire, roleIsA, deal, note, myAcctHex);
   store.set("party", party.snapshot());
   tpIndexUpsert(sessionId, { role, roleIsA, deal, at: Date.now(), done: false,
     jointNano: party.jointNanoAddress, jointXmr: party.jointMonero.address });
@@ -2842,7 +3054,7 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role) {
   // against (unrealised P&L). It must exist before the driver starts.
   if (hs.cert) store.set("acceptCert", hs.cert);
   else if (!store.get("acceptCert")) { throw new Error("refusing to settle: this take was never certified"); }
-  const result = await (roleIsA ? TP.runA : TP.runB)(tpDeps(store, note), party) || {};
+  const result = await (roleIsA ? TP.runA : TP.runB)(tpDeps(store, note, xmrDest), party) || {};
   store.set("done", { at: Date.now(), result });
   tpIndexUpsert(sessionId, { done: true, doneAt: Date.now(), outcome: result.declined ? "declined" : result.refunded ? "refunded" : "settled" });
   if (result.declined || result.refunded) {
@@ -2907,14 +3119,890 @@ function tpDealFromInput() {
 const raw2 = (raw, scale) => { const t = BigInt(raw).toString().padStart(scale + 1, "0"); return ((t.slice(0, -scale) + "." + t.slice(-scale)).replace(/0+$/, "").replace(/\.$/, "")) || "0"; };
 let tpPending = null;
 function tpResetReview() { tpPending = null; if ($("tpTake")) $("tpTake").textContent = "Review swap"; }
+// The taker receives the OTHER coin, sent straight to an external address they
+// enter — it never rests in this page's wallet. Which coin depends on the side.
+function tpDestInfo() {
+  const recvXmr = swSide === "xno";   // selling XNO ⇒ you receive XMR
+  return recvXmr
+    ? { coin: "XMR", re: /^[1-9A-HJ-NP-Za-km-z]{95,106}$/, ph: "your Monero address to receive at (4… / 8…)" }
+    : { coin: "XNO", re: /^nano_[13][0-9a-z]{59}$/, ph: "your Nano address to receive at (nano_…)" };
+}
+function tpDestVal() { return ($("tpDest") && $("tpDest").value || "").trim(); }
+function tpDestOk() { return tpDestInfo().re.test(tpDestVal()); }
+// The action button demands the receive address BEFORE it ever offers to
+// review/confirm — so "Confirm: You pay…" can never appear without a destination.
+function tpWalletOpen() { try { return !!(walletApi && walletApi.address()); } catch (e) { return false; } }
+// Dual pay/get inputs. The SOLD coin (tpAmount) always drives the real deal
+// (dealFromOffer → the exact xnoRaw/xmrAtomic that settle on-chain); the GET box
+// is the bought coin. Filling either auto-fills the other from the SELECTED
+// offer's on-chain price — these are the real settlement amounts, not estimates.
+function tpCoins() { return swSide === "xmr" ? { pay: "XMR", get: "XNO" } : { pay: "XNO", get: "XMR" }; }
+function tpFmtAmt(v, coin) { if (!(v > 0)) return ""; return String(+Number(v).toFixed(coin === "XMR" ? 9 : 6)); }
+let tpSyncing = false;
+function tpSync(driver) {
+  if (tpSyncing || !swSelected) return;
+  const price = Number(swSelected.intent.price_e9) / 1e9; if (!(price > 0)) return;   // XMR per XNO, from the offer
+  const co = tpCoins();
+  tpSyncing = true;
+  try {
+    if (driver === "get") {
+      const g = parseFloat((($("tpGet") && $("tpGet").value) || "").trim());
+      // get is the BOUGHT coin → back-compute the SOLD (pay) amount at the offer price
+      if (isFinite(g) && g > 0) $("tpAmount").value = tpFmtAmt(swSide === "xno" ? g / price : g * price, co.pay);
+      else { $("tpAmount").value = ""; }
+    }
+    // Source of truth: the sold amount → the real deal → the exact bought amount.
+    const deal = tpDealFromInput();
+    if (deal && !deal.tooBig && !deal.tooSmall && !deal.unviable) {
+      const getVal = swSide === "xno" ? Number(deal.xmrAtomic) / 1e12 : Number(deal.xnoRaw) / 1e30;
+      if ($("tpGet")) $("tpGet").value = tpFmtAmt(getVal, co.get);
+    } else if (driver === "pay" && $("tpGet")) { $("tpGet").value = ""; }
+  } finally { tpSyncing = false; }
+}
+function tpCoinLabels() { const co = tpCoins(); if ($("tpPayCoin")) $("tpPayCoin").textContent = co.pay; if ($("tpGetCoin")) $("tpGetCoin").textContent = co.get; }
+// Guided deposit: the wallet lacks enough XNO to fund the swap, so show its
+// address + the amount needed and watch the balance live. liveReceive (a Nano
+// websocket started on unlock) auto-pockets any incoming XNO and validates it
+// on-chain; we poll the balance to detect when it clears the target, then
+// resolve so the swap can continue. Resolves false if the user cancels.
+// Minimal, correct QR encoder — byte mode, ECC level M, versions 1–6 (covers a
+// Nano address). Verified by independent round-trip decode. Returns an N×N 0/1
+// matrix. No external library, no network — safe under the strict CSP.
+// QR encoding via the proven Project Nayuki qrcodegen (MIT) — the same core
+// used by qrcode.react; verified scannable by a real decoder (BarcodeDetector /
+// zxing). A prior hand-rolled encoder produced codes real scanners rejected.
+/* QR Code generator library (TypeScript) · Copyright (c) Project Nayuki · SPDX-License-Identifier: MIT · via qrcode.react */
+var qrcodegen;
+((qrcodegen2) => {
+  const _QrCode = class _QrCode {
+    /*-- Constructor (low level) and fields --*/
+    // Creates a new QR Code with the given version number,
+    // error correction level, data codeword bytes, and mask number.
+    // This is a low-level API that most users should not use directly.
+    // A mid-level API is the encodeSegments() function.
+    constructor(version, errorCorrectionLevel, dataCodewords, msk) {
+      this.version = version;
+      this.errorCorrectionLevel = errorCorrectionLevel;
+      // The modules of this QR Code (false = light, true = dark).
+      // Immutable after constructor finishes. Accessed through getModule().
+      this.modules = [];
+      // Indicates function modules that are not subjected to masking. Discarded when constructor finishes.
+      this.isFunction = [];
+      if (version < _QrCode.MIN_VERSION || version > _QrCode.MAX_VERSION)
+        throw new RangeError("Version value out of range");
+      if (msk < -1 || msk > 7)
+        throw new RangeError("Mask value out of range");
+      this.size = version * 4 + 17;
+      let row = [];
+      for (let i = 0; i < this.size; i++)
+        row.push(false);
+      for (let i = 0; i < this.size; i++) {
+        this.modules.push(row.slice());
+        this.isFunction.push(row.slice());
+      }
+      this.drawFunctionPatterns();
+      const allCodewords = this.addEccAndInterleave(dataCodewords);
+      this.drawCodewords(allCodewords);
+      if (msk == -1) {
+        let minPenalty = 1e9;
+        for (let i = 0; i < 8; i++) {
+          this.applyMask(i);
+          this.drawFormatBits(i);
+          const penalty = this.getPenaltyScore();
+          if (penalty < minPenalty) {
+            msk = i;
+            minPenalty = penalty;
+          }
+          this.applyMask(i);
+        }
+      }
+      assert(0 <= msk && msk <= 7);
+      this.mask = msk;
+      this.applyMask(msk);
+      this.drawFormatBits(msk);
+      this.isFunction = [];
+    }
+    /*-- Static factory functions (high level) --*/
+    // Returns a QR Code representing the given Unicode text string at the given error correction level.
+    // As a conservative upper bound, this function is guaranteed to succeed for strings that have 738 or fewer
+    // Unicode code points (not UTF-16 code units) if the low error correction level is used. The smallest possible
+    // QR Code version is automatically chosen for the output. The ECC level of the result may be higher than the
+    // ecl argument if it can be done without increasing the version.
+    static encodeText(text, ecl) {
+      const segs = qrcodegen2.QrSegment.makeSegments(text);
+      return _QrCode.encodeSegments(segs, ecl);
+    }
+    // Returns a QR Code representing the given binary data at the given error correction level.
+    // This function always encodes using the binary segment mode, not any text mode. The maximum number of
+    // bytes allowed is 2953. The smallest possible QR Code version is automatically chosen for the output.
+    // The ECC level of the result may be higher than the ecl argument if it can be done without increasing the version.
+    static encodeBinary(data, ecl) {
+      const seg = qrcodegen2.QrSegment.makeBytes(data);
+      return _QrCode.encodeSegments([seg], ecl);
+    }
+    /*-- Static factory functions (mid level) --*/
+    // Returns a QR Code representing the given segments with the given encoding parameters.
+    // The smallest possible QR Code version within the given range is automatically
+    // chosen for the output. Iff boostEcl is true, then the ECC level of the result
+    // may be higher than the ecl argument if it can be done without increasing the
+    // version. The mask number is either between 0 to 7 (inclusive) to force that
+    // mask, or -1 to automatically choose an appropriate mask (which may be slow).
+    // This function allows the user to create a custom sequence of segments that switches
+    // between modes (such as alphanumeric and byte) to encode text in less space.
+    // This is a mid-level API; the high-level API is encodeText() and encodeBinary().
+    static encodeSegments(segs, ecl, minVersion = 1, maxVersion = 40, mask = -1, boostEcl = true) {
+      if (!(_QrCode.MIN_VERSION <= minVersion && minVersion <= maxVersion && maxVersion <= _QrCode.MAX_VERSION) || mask < -1 || mask > 7)
+        throw new RangeError("Invalid value");
+      let version;
+      let dataUsedBits;
+      for (version = minVersion; ; version++) {
+        const dataCapacityBits2 = _QrCode.getNumDataCodewords(version, ecl) * 8;
+        const usedBits = QrSegment.getTotalBits(segs, version);
+        if (usedBits <= dataCapacityBits2) {
+          dataUsedBits = usedBits;
+          break;
+        }
+        if (version >= maxVersion)
+          throw new RangeError("Data too long");
+      }
+      for (const newEcl of [_QrCode.Ecc.MEDIUM, _QrCode.Ecc.QUARTILE, _QrCode.Ecc.HIGH]) {
+        if (boostEcl && dataUsedBits <= _QrCode.getNumDataCodewords(version, newEcl) * 8)
+          ecl = newEcl;
+      }
+      let bb = [];
+      for (const seg of segs) {
+        appendBits(seg.mode.modeBits, 4, bb);
+        appendBits(seg.numChars, seg.mode.numCharCountBits(version), bb);
+        for (const b of seg.getData())
+          bb.push(b);
+      }
+      assert(bb.length == dataUsedBits);
+      const dataCapacityBits = _QrCode.getNumDataCodewords(version, ecl) * 8;
+      assert(bb.length <= dataCapacityBits);
+      appendBits(0, Math.min(4, dataCapacityBits - bb.length), bb);
+      appendBits(0, (8 - bb.length % 8) % 8, bb);
+      assert(bb.length % 8 == 0);
+      for (let padByte = 236; bb.length < dataCapacityBits; padByte ^= 236 ^ 17)
+        appendBits(padByte, 8, bb);
+      let dataCodewords = [];
+      while (dataCodewords.length * 8 < bb.length)
+        dataCodewords.push(0);
+      bb.forEach((b, i) => dataCodewords[i >>> 3] |= b << 7 - (i & 7));
+      return new _QrCode(version, ecl, dataCodewords, mask);
+    }
+    /*-- Accessor methods --*/
+    // Returns the color of the module (pixel) at the given coordinates, which is false
+    // for light or true for dark. The top left corner has the coordinates (x=0, y=0).
+    // If the given coordinates are out of bounds, then false (light) is returned.
+    getModule(x, y) {
+      return 0 <= x && x < this.size && 0 <= y && y < this.size && this.modules[y][x];
+    }
+    // Modified to expose modules for easy access
+    getModules() {
+      return this.modules;
+    }
+    /*-- Private helper methods for constructor: Drawing function modules --*/
+    // Reads this object's version field, and draws and marks all function modules.
+    drawFunctionPatterns() {
+      for (let i = 0; i < this.size; i++) {
+        this.setFunctionModule(6, i, i % 2 == 0);
+        this.setFunctionModule(i, 6, i % 2 == 0);
+      }
+      this.drawFinderPattern(3, 3);
+      this.drawFinderPattern(this.size - 4, 3);
+      this.drawFinderPattern(3, this.size - 4);
+      const alignPatPos = this.getAlignmentPatternPositions();
+      const numAlign = alignPatPos.length;
+      for (let i = 0; i < numAlign; i++) {
+        for (let j = 0; j < numAlign; j++) {
+          if (!(i == 0 && j == 0 || i == 0 && j == numAlign - 1 || i == numAlign - 1 && j == 0))
+            this.drawAlignmentPattern(alignPatPos[i], alignPatPos[j]);
+        }
+      }
+      this.drawFormatBits(0);
+      this.drawVersion();
+    }
+    // Draws two copies of the format bits (with its own error correction code)
+    // based on the given mask and this object's error correction level field.
+    drawFormatBits(mask) {
+      const data = this.errorCorrectionLevel.formatBits << 3 | mask;
+      let rem = data;
+      for (let i = 0; i < 10; i++)
+        rem = rem << 1 ^ (rem >>> 9) * 1335;
+      const bits = (data << 10 | rem) ^ 21522;
+      assert(bits >>> 15 == 0);
+      for (let i = 0; i <= 5; i++)
+        this.setFunctionModule(8, i, getBit(bits, i));
+      this.setFunctionModule(8, 7, getBit(bits, 6));
+      this.setFunctionModule(8, 8, getBit(bits, 7));
+      this.setFunctionModule(7, 8, getBit(bits, 8));
+      for (let i = 9; i < 15; i++)
+        this.setFunctionModule(14 - i, 8, getBit(bits, i));
+      for (let i = 0; i < 8; i++)
+        this.setFunctionModule(this.size - 1 - i, 8, getBit(bits, i));
+      for (let i = 8; i < 15; i++)
+        this.setFunctionModule(8, this.size - 15 + i, getBit(bits, i));
+      this.setFunctionModule(8, this.size - 8, true);
+    }
+    // Draws two copies of the version bits (with its own error correction code),
+    // based on this object's version field, iff 7 <= version <= 40.
+    drawVersion() {
+      if (this.version < 7)
+        return;
+      let rem = this.version;
+      for (let i = 0; i < 12; i++)
+        rem = rem << 1 ^ (rem >>> 11) * 7973;
+      const bits = this.version << 12 | rem;
+      assert(bits >>> 18 == 0);
+      for (let i = 0; i < 18; i++) {
+        const color = getBit(bits, i);
+        const a = this.size - 11 + i % 3;
+        const b = Math.floor(i / 3);
+        this.setFunctionModule(a, b, color);
+        this.setFunctionModule(b, a, color);
+      }
+    }
+    // Draws a 9*9 finder pattern including the border separator,
+    // with the center module at (x, y). Modules can be out of bounds.
+    drawFinderPattern(x, y) {
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          const dist = Math.max(Math.abs(dx), Math.abs(dy));
+          const xx = x + dx;
+          const yy = y + dy;
+          if (0 <= xx && xx < this.size && 0 <= yy && yy < this.size)
+            this.setFunctionModule(xx, yy, dist != 2 && dist != 4);
+        }
+      }
+    }
+    // Draws a 5*5 alignment pattern, with the center module
+    // at (x, y). All modules must be in bounds.
+    drawAlignmentPattern(x, y) {
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++)
+          this.setFunctionModule(x + dx, y + dy, Math.max(Math.abs(dx), Math.abs(dy)) != 1);
+      }
+    }
+    // Sets the color of a module and marks it as a function module.
+    // Only used by the constructor. Coordinates must be in bounds.
+    setFunctionModule(x, y, isDark) {
+      this.modules[y][x] = isDark;
+      this.isFunction[y][x] = true;
+    }
+    /*-- Private helper methods for constructor: Codewords and masking --*/
+    // Returns a new byte string representing the given data with the appropriate error correction
+    // codewords appended to it, based on this object's version and error correction level.
+    addEccAndInterleave(data) {
+      const ver = this.version;
+      const ecl = this.errorCorrectionLevel;
+      if (data.length != _QrCode.getNumDataCodewords(ver, ecl))
+        throw new RangeError("Invalid argument");
+      const numBlocks = _QrCode.NUM_ERROR_CORRECTION_BLOCKS[ecl.ordinal][ver];
+      const blockEccLen = _QrCode.ECC_CODEWORDS_PER_BLOCK[ecl.ordinal][ver];
+      const rawCodewords = Math.floor(_QrCode.getNumRawDataModules(ver) / 8);
+      const numShortBlocks = numBlocks - rawCodewords % numBlocks;
+      const shortBlockLen = Math.floor(rawCodewords / numBlocks);
+      let blocks = [];
+      const rsDiv = _QrCode.reedSolomonComputeDivisor(blockEccLen);
+      for (let i = 0, k = 0; i < numBlocks; i++) {
+        let dat = data.slice(k, k + shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1));
+        k += dat.length;
+        const ecc = _QrCode.reedSolomonComputeRemainder(dat, rsDiv);
+        if (i < numShortBlocks)
+          dat.push(0);
+        blocks.push(dat.concat(ecc));
+      }
+      let result = [];
+      for (let i = 0; i < blocks[0].length; i++) {
+        blocks.forEach((block, j) => {
+          if (i != shortBlockLen - blockEccLen || j >= numShortBlocks)
+            result.push(block[i]);
+        });
+      }
+      assert(result.length == rawCodewords);
+      return result;
+    }
+    // Draws the given sequence of 8-bit codewords (data and error correction) onto the entire
+    // data area of this QR Code. Function modules need to be marked off before this is called.
+    drawCodewords(data) {
+      if (data.length != Math.floor(_QrCode.getNumRawDataModules(this.version) / 8))
+        throw new RangeError("Invalid argument");
+      let i = 0;
+      for (let right = this.size - 1; right >= 1; right -= 2) {
+        if (right == 6)
+          right = 5;
+        for (let vert = 0; vert < this.size; vert++) {
+          for (let j = 0; j < 2; j++) {
+            const x = right - j;
+            const upward = (right + 1 & 2) == 0;
+            const y = upward ? this.size - 1 - vert : vert;
+            if (!this.isFunction[y][x] && i < data.length * 8) {
+              this.modules[y][x] = getBit(data[i >>> 3], 7 - (i & 7));
+              i++;
+            }
+          }
+        }
+      }
+      assert(i == data.length * 8);
+    }
+    // XORs the codeword modules in this QR Code with the given mask pattern.
+    // The function modules must be marked and the codeword bits must be drawn
+    // before masking. Due to the arithmetic of XOR, calling applyMask() with
+    // the same mask value a second time will undo the mask. A final well-formed
+    // QR Code needs exactly one (not zero, two, etc.) mask applied.
+    applyMask(mask) {
+      if (mask < 0 || mask > 7)
+        throw new RangeError("Mask value out of range");
+      for (let y = 0; y < this.size; y++) {
+        for (let x = 0; x < this.size; x++) {
+          let invert;
+          switch (mask) {
+            case 0:
+              invert = (x + y) % 2 == 0;
+              break;
+            case 1:
+              invert = y % 2 == 0;
+              break;
+            case 2:
+              invert = x % 3 == 0;
+              break;
+            case 3:
+              invert = (x + y) % 3 == 0;
+              break;
+            case 4:
+              invert = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 == 0;
+              break;
+            case 5:
+              invert = x * y % 2 + x * y % 3 == 0;
+              break;
+            case 6:
+              invert = (x * y % 2 + x * y % 3) % 2 == 0;
+              break;
+            case 7:
+              invert = ((x + y) % 2 + x * y % 3) % 2 == 0;
+              break;
+            default:
+              throw new Error("Unreachable");
+          }
+          if (!this.isFunction[y][x] && invert)
+            this.modules[y][x] = !this.modules[y][x];
+        }
+      }
+    }
+    // Calculates and returns the penalty score based on state of this QR Code's current modules.
+    // This is used by the automatic mask choice algorithm to find the mask pattern that yields the lowest score.
+    getPenaltyScore() {
+      let result = 0;
+      for (let y = 0; y < this.size; y++) {
+        let runColor = false;
+        let runX = 0;
+        let runHistory = [0, 0, 0, 0, 0, 0, 0];
+        for (let x = 0; x < this.size; x++) {
+          if (this.modules[y][x] == runColor) {
+            runX++;
+            if (runX == 5)
+              result += _QrCode.PENALTY_N1;
+            else if (runX > 5)
+              result++;
+          } else {
+            this.finderPenaltyAddHistory(runX, runHistory);
+            if (!runColor)
+              result += this.finderPenaltyCountPatterns(runHistory) * _QrCode.PENALTY_N3;
+            runColor = this.modules[y][x];
+            runX = 1;
+          }
+        }
+        result += this.finderPenaltyTerminateAndCount(runColor, runX, runHistory) * _QrCode.PENALTY_N3;
+      }
+      for (let x = 0; x < this.size; x++) {
+        let runColor = false;
+        let runY = 0;
+        let runHistory = [0, 0, 0, 0, 0, 0, 0];
+        for (let y = 0; y < this.size; y++) {
+          if (this.modules[y][x] == runColor) {
+            runY++;
+            if (runY == 5)
+              result += _QrCode.PENALTY_N1;
+            else if (runY > 5)
+              result++;
+          } else {
+            this.finderPenaltyAddHistory(runY, runHistory);
+            if (!runColor)
+              result += this.finderPenaltyCountPatterns(runHistory) * _QrCode.PENALTY_N3;
+            runColor = this.modules[y][x];
+            runY = 1;
+          }
+        }
+        result += this.finderPenaltyTerminateAndCount(runColor, runY, runHistory) * _QrCode.PENALTY_N3;
+      }
+      for (let y = 0; y < this.size - 1; y++) {
+        for (let x = 0; x < this.size - 1; x++) {
+          const color = this.modules[y][x];
+          if (color == this.modules[y][x + 1] && color == this.modules[y + 1][x] && color == this.modules[y + 1][x + 1])
+            result += _QrCode.PENALTY_N2;
+        }
+      }
+      let dark = 0;
+      for (const row of this.modules)
+        dark = row.reduce((sum, color) => sum + (color ? 1 : 0), dark);
+      const total = this.size * this.size;
+      const k = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1;
+      assert(0 <= k && k <= 9);
+      result += k * _QrCode.PENALTY_N4;
+      assert(0 <= result && result <= 2568888);
+      return result;
+    }
+    /*-- Private helper functions --*/
+    // Returns an ascending list of positions of alignment patterns for this version number.
+    // Each position is in the range [0,177), and are used on both the x and y axes.
+    // This could be implemented as lookup table of 40 variable-length lists of integers.
+    getAlignmentPatternPositions() {
+      if (this.version == 1)
+        return [];
+      else {
+        const numAlign = Math.floor(this.version / 7) + 2;
+        const step = this.version == 32 ? 26 : Math.ceil((this.version * 4 + 4) / (numAlign * 2 - 2)) * 2;
+        let result = [6];
+        for (let pos = this.size - 7; result.length < numAlign; pos -= step)
+          result.splice(1, 0, pos);
+        return result;
+      }
+    }
+    // Returns the number of data bits that can be stored in a QR Code of the given version number, after
+    // all function modules are excluded. This includes remainder bits, so it might not be a multiple of 8.
+    // The result is in the range [208, 29648]. This could be implemented as a 40-entry lookup table.
+    static getNumRawDataModules(ver) {
+      if (ver < _QrCode.MIN_VERSION || ver > _QrCode.MAX_VERSION)
+        throw new RangeError("Version number out of range");
+      let result = (16 * ver + 128) * ver + 64;
+      if (ver >= 2) {
+        const numAlign = Math.floor(ver / 7) + 2;
+        result -= (25 * numAlign - 10) * numAlign - 55;
+        if (ver >= 7)
+          result -= 36;
+      }
+      assert(208 <= result && result <= 29648);
+      return result;
+    }
+    // Returns the number of 8-bit data (i.e. not error correction) codewords contained in any
+    // QR Code of the given version number and error correction level, with remainder bits discarded.
+    // This stateless pure function could be implemented as a (40*4)-cell lookup table.
+    static getNumDataCodewords(ver, ecl) {
+      return Math.floor(_QrCode.getNumRawDataModules(ver) / 8) - _QrCode.ECC_CODEWORDS_PER_BLOCK[ecl.ordinal][ver] * _QrCode.NUM_ERROR_CORRECTION_BLOCKS[ecl.ordinal][ver];
+    }
+    // Returns a Reed-Solomon ECC generator polynomial for the given degree. This could be
+    // implemented as a lookup table over all possible parameter values, instead of as an algorithm.
+    static reedSolomonComputeDivisor(degree) {
+      if (degree < 1 || degree > 255)
+        throw new RangeError("Degree out of range");
+      let result = [];
+      for (let i = 0; i < degree - 1; i++)
+        result.push(0);
+      result.push(1);
+      let root = 1;
+      for (let i = 0; i < degree; i++) {
+        for (let j = 0; j < result.length; j++) {
+          result[j] = _QrCode.reedSolomonMultiply(result[j], root);
+          if (j + 1 < result.length)
+            result[j] ^= result[j + 1];
+        }
+        root = _QrCode.reedSolomonMultiply(root, 2);
+      }
+      return result;
+    }
+    // Returns the Reed-Solomon error correction codeword for the given data and divisor polynomials.
+    static reedSolomonComputeRemainder(data, divisor) {
+      let result = divisor.map((_) => 0);
+      for (const b of data) {
+        const factor = b ^ result.shift();
+        result.push(0);
+        divisor.forEach((coef, i) => result[i] ^= _QrCode.reedSolomonMultiply(coef, factor));
+      }
+      return result;
+    }
+    // Returns the product of the two given field elements modulo GF(2^8/0x11D). The arguments and result
+    // are unsigned 8-bit integers. This could be implemented as a lookup table of 256*256 entries of uint8.
+    static reedSolomonMultiply(x, y) {
+      if (x >>> 8 != 0 || y >>> 8 != 0)
+        throw new RangeError("Byte out of range");
+      let z = 0;
+      for (let i = 7; i >= 0; i--) {
+        z = z << 1 ^ (z >>> 7) * 285;
+        z ^= (y >>> i & 1) * x;
+      }
+      assert(z >>> 8 == 0);
+      return z;
+    }
+    // Can only be called immediately after a light run is added, and
+    // returns either 0, 1, or 2. A helper function for getPenaltyScore().
+    finderPenaltyCountPatterns(runHistory) {
+      const n = runHistory[1];
+      assert(n <= this.size * 3);
+      const core = n > 0 && runHistory[2] == n && runHistory[3] == n * 3 && runHistory[4] == n && runHistory[5] == n;
+      return (core && runHistory[0] >= n * 4 && runHistory[6] >= n ? 1 : 0) + (core && runHistory[6] >= n * 4 && runHistory[0] >= n ? 1 : 0);
+    }
+    // Must be called at the end of a line (row or column) of modules. A helper function for getPenaltyScore().
+    finderPenaltyTerminateAndCount(currentRunColor, currentRunLength, runHistory) {
+      if (currentRunColor) {
+        this.finderPenaltyAddHistory(currentRunLength, runHistory);
+        currentRunLength = 0;
+      }
+      currentRunLength += this.size;
+      this.finderPenaltyAddHistory(currentRunLength, runHistory);
+      return this.finderPenaltyCountPatterns(runHistory);
+    }
+    // Pushes the given value to the front and drops the last value. A helper function for getPenaltyScore().
+    finderPenaltyAddHistory(currentRunLength, runHistory) {
+      if (runHistory[0] == 0)
+        currentRunLength += this.size;
+      runHistory.pop();
+      runHistory.unshift(currentRunLength);
+    }
+  };
+  /*-- Constants and tables --*/
+  // The minimum version number supported in the QR Code Model 2 standard.
+  _QrCode.MIN_VERSION = 1;
+  // The maximum version number supported in the QR Code Model 2 standard.
+  _QrCode.MAX_VERSION = 40;
+  // For use in getPenaltyScore(), when evaluating which mask is best.
+  _QrCode.PENALTY_N1 = 3;
+  _QrCode.PENALTY_N2 = 3;
+  _QrCode.PENALTY_N3 = 40;
+  _QrCode.PENALTY_N4 = 10;
+  _QrCode.ECC_CODEWORDS_PER_BLOCK = [
+    // Version: (note that index 0 is for padding, and is set to an illegal value)
+    //0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
+    [-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
+    // Low
+    [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
+    // Medium
+    [-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
+    // Quartile
+    [-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+    // High
+  ];
+  _QrCode.NUM_ERROR_CORRECTION_BLOCKS = [
+    // Version: (note that index 0 is for padding, and is set to an illegal value)
+    //0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
+    [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25],
+    // Low
+    [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49],
+    // Medium
+    [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68],
+    // Quartile
+    [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81]
+    // High
+  ];
+  let QrCode = _QrCode;
+  qrcodegen2.QrCode = _QrCode;
+  function appendBits(val, len, bb) {
+    if (len < 0 || len > 31 || val >>> len != 0)
+      throw new RangeError("Value out of range");
+    for (let i = len - 1; i >= 0; i--)
+      bb.push(val >>> i & 1);
+  }
+  function getBit(x, i) {
+    return (x >>> i & 1) != 0;
+  }
+  function assert(cond) {
+    if (!cond)
+      throw new Error("Assertion error");
+  }
+  const _QrSegment = class _QrSegment {
+    /*-- Constructor (low level) and fields --*/
+    // Creates a new QR Code segment with the given attributes and data.
+    // The character count (numChars) must agree with the mode and the bit buffer length,
+    // but the constraint isn't checked. The given bit buffer is cloned and stored.
+    constructor(mode, numChars, bitData) {
+      this.mode = mode;
+      this.numChars = numChars;
+      this.bitData = bitData;
+      if (numChars < 0)
+        throw new RangeError("Invalid argument");
+      this.bitData = bitData.slice();
+    }
+    /*-- Static factory functions (mid level) --*/
+    // Returns a segment representing the given binary data encoded in
+    // byte mode. All input byte arrays are acceptable. Any text string
+    // can be converted to UTF-8 bytes and encoded as a byte mode segment.
+    static makeBytes(data) {
+      let bb = [];
+      for (const b of data)
+        appendBits(b, 8, bb);
+      return new _QrSegment(_QrSegment.Mode.BYTE, data.length, bb);
+    }
+    // Returns a segment representing the given string of decimal digits encoded in numeric mode.
+    static makeNumeric(digits) {
+      if (!_QrSegment.isNumeric(digits))
+        throw new RangeError("String contains non-numeric characters");
+      let bb = [];
+      for (let i = 0; i < digits.length; ) {
+        const n = Math.min(digits.length - i, 3);
+        appendBits(parseInt(digits.substring(i, i + n), 10), n * 3 + 1, bb);
+        i += n;
+      }
+      return new _QrSegment(_QrSegment.Mode.NUMERIC, digits.length, bb);
+    }
+    // Returns a segment representing the given text string encoded in alphanumeric mode.
+    // The characters allowed are: 0 to 9, A to Z (uppercase only), space,
+    // dollar, percent, asterisk, plus, hyphen, period, slash, colon.
+    static makeAlphanumeric(text) {
+      if (!_QrSegment.isAlphanumeric(text))
+        throw new RangeError("String contains unencodable characters in alphanumeric mode");
+      let bb = [];
+      let i;
+      for (i = 0; i + 2 <= text.length; i += 2) {
+        let temp = _QrSegment.ALPHANUMERIC_CHARSET.indexOf(text.charAt(i)) * 45;
+        temp += _QrSegment.ALPHANUMERIC_CHARSET.indexOf(text.charAt(i + 1));
+        appendBits(temp, 11, bb);
+      }
+      if (i < text.length)
+        appendBits(_QrSegment.ALPHANUMERIC_CHARSET.indexOf(text.charAt(i)), 6, bb);
+      return new _QrSegment(_QrSegment.Mode.ALPHANUMERIC, text.length, bb);
+    }
+    // Returns a new mutable list of zero or more segments to represent the given Unicode text string.
+    // The result may use various segment modes and switch modes to optimize the length of the bit stream.
+    static makeSegments(text) {
+      if (text == "")
+        return [];
+      else if (_QrSegment.isNumeric(text))
+        return [_QrSegment.makeNumeric(text)];
+      else if (_QrSegment.isAlphanumeric(text))
+        return [_QrSegment.makeAlphanumeric(text)];
+      else
+        return [_QrSegment.makeBytes(_QrSegment.toUtf8ByteArray(text))];
+    }
+    // Returns a segment representing an Extended Channel Interpretation
+    // (ECI) designator with the given assignment value.
+    static makeEci(assignVal) {
+      let bb = [];
+      if (assignVal < 0)
+        throw new RangeError("ECI assignment value out of range");
+      else if (assignVal < 1 << 7)
+        appendBits(assignVal, 8, bb);
+      else if (assignVal < 1 << 14) {
+        appendBits(2, 2, bb);
+        appendBits(assignVal, 14, bb);
+      } else if (assignVal < 1e6) {
+        appendBits(6, 3, bb);
+        appendBits(assignVal, 21, bb);
+      } else
+        throw new RangeError("ECI assignment value out of range");
+      return new _QrSegment(_QrSegment.Mode.ECI, 0, bb);
+    }
+    // Tests whether the given string can be encoded as a segment in numeric mode.
+    // A string is encodable iff each character is in the range 0 to 9.
+    static isNumeric(text) {
+      return _QrSegment.NUMERIC_REGEX.test(text);
+    }
+    // Tests whether the given string can be encoded as a segment in alphanumeric mode.
+    // A string is encodable iff each character is in the following set: 0 to 9, A to Z
+    // (uppercase only), space, dollar, percent, asterisk, plus, hyphen, period, slash, colon.
+    static isAlphanumeric(text) {
+      return _QrSegment.ALPHANUMERIC_REGEX.test(text);
+    }
+    /*-- Methods --*/
+    // Returns a new copy of the data bits of this segment.
+    getData() {
+      return this.bitData.slice();
+    }
+    // (Package-private) Calculates and returns the number of bits needed to encode the given segments at
+    // the given version. The result is infinity if a segment has too many characters to fit its length field.
+    static getTotalBits(segs, version) {
+      let result = 0;
+      for (const seg of segs) {
+        const ccbits = seg.mode.numCharCountBits(version);
+        if (seg.numChars >= 1 << ccbits)
+          return Infinity;
+        result += 4 + ccbits + seg.bitData.length;
+      }
+      return result;
+    }
+    // Returns a new array of bytes representing the given string encoded in UTF-8.
+    static toUtf8ByteArray(str) {
+      str = encodeURI(str);
+      let result = [];
+      for (let i = 0; i < str.length; i++) {
+        if (str.charAt(i) != "%")
+          result.push(str.charCodeAt(i));
+        else {
+          result.push(parseInt(str.substring(i + 1, i + 3), 16));
+          i += 2;
+        }
+      }
+      return result;
+    }
+  };
+  /*-- Constants --*/
+  // Describes precisely all strings that are encodable in numeric mode.
+  _QrSegment.NUMERIC_REGEX = /^[0-9]*$/;
+  // Describes precisely all strings that are encodable in alphanumeric mode.
+  _QrSegment.ALPHANUMERIC_REGEX = /^[A-Z0-9 $%*+.\/:-]*$/;
+  // The set of all legal characters in alphanumeric mode,
+  // where each character value maps to the index in the string.
+  _QrSegment.ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+  let QrSegment = _QrSegment;
+  qrcodegen2.QrSegment = _QrSegment;
+})(qrcodegen || (qrcodegen = {}));
+((qrcodegen2) => {
+  let QrCode;
+  ((QrCode2) => {
+    const _Ecc = class _Ecc {
+      // The QR Code can tolerate about 30% erroneous codewords
+      /*-- Constructor and fields --*/
+      constructor(ordinal, formatBits) {
+        this.ordinal = ordinal;
+        this.formatBits = formatBits;
+      }
+    };
+    /*-- Constants --*/
+    _Ecc.LOW = new _Ecc(0, 1);
+    // The QR Code can tolerate about  7% erroneous codewords
+    _Ecc.MEDIUM = new _Ecc(1, 0);
+    // The QR Code can tolerate about 15% erroneous codewords
+    _Ecc.QUARTILE = new _Ecc(2, 3);
+    // The QR Code can tolerate about 25% erroneous codewords
+    _Ecc.HIGH = new _Ecc(3, 2);
+    let Ecc = _Ecc;
+    QrCode2.Ecc = _Ecc;
+  })(QrCode = qrcodegen2.QrCode || (qrcodegen2.QrCode = {}));
+})(qrcodegen || (qrcodegen = {}));
+((qrcodegen2) => {
+  let QrSegment;
+  ((QrSegment2) => {
+    const _Mode = class _Mode {
+      /*-- Constructor and fields --*/
+      constructor(modeBits, numBitsCharCount) {
+        this.modeBits = modeBits;
+        this.numBitsCharCount = numBitsCharCount;
+      }
+      /*-- Method --*/
+      // (Package-private) Returns the bit width of the character count field for a segment in
+      // this mode in a QR Code at the given version number. The result is in the range [0, 16].
+      numCharCountBits(ver) {
+        return this.numBitsCharCount[Math.floor((ver + 7) / 17)];
+      }
+    };
+    /*-- Constants --*/
+    _Mode.NUMERIC = new _Mode(1, [10, 12, 14]);
+    _Mode.ALPHANUMERIC = new _Mode(2, [9, 11, 13]);
+    _Mode.BYTE = new _Mode(4, [8, 16, 16]);
+    _Mode.KANJI = new _Mode(8, [8, 10, 12]);
+    _Mode.ECI = new _Mode(7, [0, 0, 0]);
+    let Mode = _Mode;
+    QrSegment2.Mode = _Mode;
+  })(QrSegment = qrcodegen2.QrSegment || (qrcodegen2.QrSegment = {}));
+})(qrcodegen || (qrcodegen = {}));
+function qrMatrix(text) {
+  const qr = qrcodegen.QrCode.encodeText(text, qrcodegen.QrCode.Ecc.MEDIUM);
+  const n = qr.size, m = [];
+  for (let r = 0; r < n; r++) { m[r] = []; for (let c = 0; c < n; c++) m[r][c] = qr.getModule(c, r) ? 1 : 0; }
+  return m;
+}
+// Draw a QR matrix onto a canvas with a quiet zone, crisp square modules.
+function tpDrawQr(canvas, text) {
+  try {
+    const m = qrMatrix(text); const n = m.length, quiet = 4, px = 6, size = (n + quiet * 2) * px;
+    canvas.width = size; canvas.height = size; canvas.style.width = size + "px"; canvas.style.height = size + "px";
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size); ctx.fillStyle = "#0b0b0b";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) ctx.fillRect((c + quiet) * px, (r + quiet) * px, px, px);
+    return true;
+  } catch (e) { return false; }
+}
+let tpDepTimer = null;
+function tpHideDeposit() { if (tpDepTimer) { clearInterval(tpDepTimer); tpDepTimer = null; } const el = $("tpDeposit"); if (el) el.style.display = "none"; }
+let tpXmrAddrCache = null;
+async function tpXmrAddr() { if (!tpXmrAddrCache) { try { tpXmrAddrCache = await walletApi.xmrAddress(); } catch (e) {} } return tpXmrAddrCache; }
+// Guided deposit for EITHER coin. coin "xno": Nano address, nano:…?amount=<raw>,
+// balance polled via the RPC (websocket auto-pockets). coin "xmr": Monero
+// address, monero:…?tx_amount=<xmr>, spendable polled via the background scan
+// (slower — Monero needs ~10 confirmations before it is spendable).
+function tpShowDeposit(coin, needAmt, haveAmt) {
+  return new Promise(async (resolve) => {
+    const el = $("tpDeposit"); if (!el || !tpWalletOpen()) { resolve(false); return; }
+    const isXmr = coin === "xmr", unit = isXmr ? "XMR" : "XNO", dp = isXmr ? 6 : 3, fd = isXmr ? 6 : 4;
+    const addr = isXmr ? await tpXmrAddr() : walletApi.address();
+    if (!addr) { resolve(false); return; }
+    const short = Math.max(needAmt - (haveAmt || 0), isXmr ? 0.0001 : 0.000001);
+    const uri = isXmr
+      ? ("monero:" + addr + "?tx_amount=" + (+short.toFixed(12)))          // Monero URI: tx_amount in XMR
+      : ("nano:" + addr + "?amount=" + (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString());  // Nano URI: amount in raw
+    $("tpDepTitle").textContent = "Deposit " + unit + " to fund your swap";
+    $("tpDepMsg").textContent = "This swap needs " + needAmt.toFixed(dp) + " " + unit + " total. You already have " + (haveAmt || 0).toFixed(dp) + " " + unit + " in your wallet, so send the remaining " + short.toFixed(dp) + " " + unit + " (" + (haveAmt || 0).toFixed(dp) + " + " + short.toFixed(dp) + " = " + needAmt.toFixed(dp) + "). The code pre-fills exactly that amount — detected automatically."
+      + (isXmr ? " Monero needs ~10 confirmations (~20 min) to become spendable." : "");
+    if ($("tpDepQr")) { const drew = tpDrawQr($("tpDepQr"), uri); $("tpDepQr").style.display = drew ? "block" : "none"; }
+    $("tpDepAddr").textContent = addr;
+    $("tpDepStatus").textContent = "● Waiting for your deposit…";
+    el.style.display = ""; try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    $("tpDepCopy").onclick = () => { try { navigator.clipboard.writeText(addr).then(() => { $("tpDepCopy").textContent = "Copied ✓"; setTimeout(() => { $("tpDepCopy").textContent = "Copy address"; }, 1500); }); } catch (e) {} };
+    if (isXmr) { try { xmrAutoStart(); } catch (e) {} }   // make sure the Monero scan is running to detect it
+    let done = false;
+    $("tpDepCancel").onclick = () => { if (done) return; done = true; tpHideDeposit(); resolve(false); };
+    tpDepTimer = setInterval(async () => {
+      if (done) return;
+      try {
+        let have;
+        if (isXmr) have = parseFloat(walletBal.xmr || 0);
+        else { const b = await walletApi.balance(); have = parseFloat((b && b.xno) || "0"); }
+        if (have >= needAmt) { done = true; $("tpDepStatus").textContent = "✓ Received — " + have.toFixed(fd) + " " + unit + " spendable. Funded."; setTimeout(tpHideDeposit, 900); resolve(true); }
+        else if (have > 0) { $("tpDepStatus").textContent = "● " + have.toFixed(fd) + " " + unit + " so far — need " + needAmt.toFixed(dp) + (isXmr ? " (confirming…)" : "") + ". Waiting…"; }
+      } catch (e) {}
+    }, isXmr ? 6000 : 3000);
+  });
+}
+function tpBtnSync() {
+  const btn = $("tpTake"); if (!btn || tpPending) return;   // in confirm state: leave "Confirm: …"
+  const d = swSelected ? tpDealFromInput() : null;
+  const validDeal = d && !d.tooSmall && !d.unviable && !d.tooBig;
+  let label = "Review swap", need = false;
+  if (swSelected && !tpWalletOpen()) { label = "Unlock your wallet to swap"; need = true; }
+  else if (validDeal && !tpDestOk()) { label = "↑ Enter your " + tpDestInfo().coin + " address to continue"; need = true; }
+  btn.textContent = label;
+  btn.classList.toggle("btn-need", need);
+}
+// The minimum viable fill, expressed in the coin the taker TYPES (the sold
+// coin), slightly rounded UP so entering exactly it passes the gate.
+function tpMinSell() {
+  try {
+    const TP = window.XnoxmrTwoParty;
+    if (!TP || !swSelected || !swLastMid) return null;
+    const minRaw = TP.minViableXnoRaw(swSelected.intent.price_e9, swSelected.intent.side === 0, swLastMid, null, CERT.MIN_ACCEPT_BPS);
+    if (!minRaw) return null;
+    const minXno = Number(BigInt(minRaw) / (10n ** 24n)) / 1e6;
+    if (swSide === "xno") return { amt: Math.ceil(minXno * 100) / 100, coin: "XNO" };
+    const price = Number(swSelected.intent.price_e9) / 1e9;
+    return { amt: Math.ceil(minXno * price * 1e6) / 1e6, coin: "XMR" };
+  } catch (e) { return null; }
+}
+function tpAmtErr(on, mn) {
+  const row = $("tpAmount") && $("tpAmount").closest(".pgrow"), hint = $("tpMinHint");
+  if (row) row.classList.toggle("err", !!on);
+  if (!hint) return;
+  hint.classList.toggle("show", !!(on && mn));
+  if (on && mn) {
+    hint.textContent = "Minimum " + mn.amt + " " + mn.coin + " — tap to use it";
+    hint.onclick = () => { $("tpAmount").value = String(mn.amt); tpSync("pay"); tpQuoteRender(); };
+  }
+}
 function tpQuoteRender() {
   const q = $("tpQuote"); if (!q) return;
-  $("tpAmount").placeholder = swSide === "xmr" ? "amount of XMR to sell" : "amount of XNO to sell";
+  const mn = tpMinSell();
+  $("tpAmount").placeholder = mn ? ("min " + mn.amt + " " + mn.coin)
+    : (swSide === "xmr" ? "amount of XMR to sell" : "amount of XNO to sell");
+  tpAmtErr(false);
+  { const i = tpDestInfo(); if ($("tpDest")) $("tpDest").placeholder = i.ph;
+    if ($("tpDestNote")) $("tpDestNote").textContent = "Your " + i.coin + " is sent straight to this external address — it never stays in this page's wallet."; }
+  tpCoinLabels();
   tpResetReview();
+  tpBtnSync();
   if (!swSelected) { q.textContent = "Pick a live offer above to get a quote."; return; }
   const d = tpDealFromInput();
   if (!d) { q.textContent = "Enter how much " + (swSide === "xmr" ? "XMR" : "XNO") + " you want to sell."; return; }
-  if (d.tooSmall) { q.textContent = "Too small for the maker to fill profitably — the Monero network fee alone would put them at a loss, so they will decline. Use at least " + d.minXno.toFixed(2) + " XNO."; return; }
+  if (d.tooSmall) {
+    tpAmtErr(true, mn);
+    q.textContent = "Too small for the maker to fill profitably — the Monero network fee alone would put them at a loss, so they will decline." + (mn ? " Minimum " + mn.amt + " " + mn.coin + "." : " Use at least " + d.minXno.toFixed(2) + " XNO.");
+    return;
+  }
   if (d.unviable) { q.textContent = "This offer is not fillable at any size at the current market — the maker's price is no longer a win for them. Pick another offer."; return; }
   if (d.tooBig) { q.textContent = "That is more than this offer can take — pick a smaller amount or another offer."; return; }
   const pay = swSide === "xmr" ? raw2(d.xmrAtomic, 12) + " XMR" : raw2(d.xnoRaw, 30) + " XNO";
@@ -2922,9 +4010,10 @@ function tpQuoteRender() {
   const price = (Number(d.priceE9) / 1e9).toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
   q.textContent = "You pay " + pay + " · you get " + get + " · at " + price + " XMR/XNO" + swFairness(Number(d.priceE9), d.side);
 }
-$("tpAmount").addEventListener("input", tpQuoteRender);
+$("tpAmount").addEventListener("input", () => { tpSync("pay"); tpQuoteRender(); });
+if ($("tpGet")) $("tpGet").addEventListener("input", () => { tpSync("get"); tpQuoteRender(); });
 if ($("tpTake")) $("tpTake").onclick = async () => {
-  if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first."); appView("wallet"); return; }
+  if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first — you'll be brought straight back here."); appReturnView = "swap"; appView("wallet"); return; }
   if (!swSelected) { tpLog("Pick a live offer above first."); return; }
   const d = tpDealFromInput();
   if (!d || d.tooBig || d.tooSmall || d.unviable) {
@@ -2933,28 +4022,75 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
         : d && d.tooBig ? "Amount exceeds this offer." : "Enter the amount to sell.");
     return;
   }
-  // Two-step: first tap shows the exact amounts, second tap commits.
-  if (!tpPending || tpPending.offerHash !== d.offerHash || tpPending.xnoRaw !== d.xnoRaw) {
-    tpPending = d; $("tpTake").textContent = "Confirm: " + $("tpQuote").textContent.split(" · at ")[0];
-    tpLog("check the amounts above, then tap Confirm");
+  // Require a valid EXTERNAL receive address — the bought coin is sent there,
+  // never left in this page's wallet.
+  const di = tpDestInfo();
+  if (!tpDestOk()) { tpResetReview(); tpLog("Enter a valid " + di.coin + " address to receive your " + di.coin + " at."); if ($("tpDest")) $("tpDest").focus(); return; }
+  const dest = tpDestVal();
+  // Two-step: first tap shows the exact amounts + destination, second commits.
+  if (!tpPending || tpPending.offerHash !== d.offerHash || tpPending.xnoRaw !== d.xnoRaw || tpPending.dest !== dest) {
+    tpPending = Object.assign({}, d, { dest }); $("tpTake").textContent = "Confirm: " + $("tpQuote").textContent.split(" · at ")[0];
+    tpLog("Check the amounts, and that your " + di.coin + " goes to:\n  " + dest + "\nThen tap Confirm.");
     return;
   }
-  const deal = tpPending; tpResetReview();
+  const deal = tpPending; const extDest = deal.dest; tpResetReview();
+  // Fund check — guide a live-detected deposit BEFORE anything is posted, for
+  // whichever coin the taker sells (and, for an XMR seller, the small XNO the
+  // take-request posting needs). No more cryptic "identity balance too low".
+  // Pocket any receivable XNO FIRST, then read: money already sent to the
+  // wallet counts, so the deposit QR only appears when genuinely short.
+  const readXno = async () => { try { try { await walletApi.receive(); } catch (e) {} const b = await walletApi.balance(); return parseFloat((b && b.xno) || "0"); } catch (e) { return 0; } };
+  if (swSide === "xno") {
+    // sell XNO → need XNO to post the take-request AND fund the joint
+    const needXno = Number(BigInt(deal.xnoRaw) / (10n ** 24n)) / 1e6 + 0.01;
+    const have = await readXno();
+    if (have < needXno) {
+      tpLog("Your wallet needs about " + needXno.toFixed(3) + " XNO — send XNO to fund the swap (auto-detected).");
+      if (!await tpShowDeposit("xno", needXno, have)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+    }
+  } else {
+    // sell XMR → need a little XNO to post the request, and enough XMR to fund
+    const dustXno = 0.01, haveXno = await readXno();
+    if (haveXno < dustXno) {
+      tpLog("Selling XMR also needs a little XNO to post the request — send ~" + dustXno + " XNO (auto-detected).");
+      if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+    }
+    const needXmr = Number(deal.xmrAtomic) / 1e12 + 0.001;   // pay XMR + Monero fee buffer
+    let haveXmr = parseFloat(walletBal.xmr || 0);
+    if (haveXmr < needXmr) {   // maybe just a stale scan — refresh (bounded) before showing the QR
+      try { tpLog("checking your Monero balance…"); const b = await walletApi.xmrRefresh(() => {}, { maxChunks: 10 }); haveXmr = parseFloat(b.spendable) || haveXmr; } catch (e) {}
+    }
+    if (haveXmr < needXmr) {
+      tpLog("Your wallet needs about " + needXmr.toFixed(6) + " XMR — send XMR to fund the swap (auto-detected; Monero takes ~20 min to confirm).");
+      if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+    }
+  }
   try {
     $("tpTake").disabled = true; tpLog("loading engine…"); await tpEnsure();
     const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
     const roleIsA = deal.side === 1;
+    // The take-request posts from the page identity — top it up with a little
+    // XNO from the funded wallet so posting never fails on an empty identity.
+    try {
+      const idAddr = JSON.parse(expWasm.seed_account(expSeed())).address;
+      const idInfo = await expBeacon.accountInfo(rpcState.nano, idAddr).catch(() => null);
+      if (!(idInfo && BigInt(idInfo.balance || "0") > 0n)) {
+        const b = await walletApi.balance();
+        if (b.opened && parseFloat(b.xno) >= 0.005) { tpLog("funding the posting identity…"); await walletApi.send(idAddr, "0.002"); }
+      }
+    } catch (e) {}
     tpLog("posting take-request + waiting for the maker…");
     const hs = await TP.takerHandshake(M, tpRelay(), swSelected, deal, tpLog);
-    await tpRun(hs, deal, roleIsA, String(deal.offerHash).toLowerCase() + "-T", tpLog, "taker");
-    tpLog("swap complete ✓ — " + (roleIsA ? "XMR" : "XNO") + " received in your wallet.");
+    await tpRun(hs, deal, roleIsA, String(deal.offerHash).toLowerCase() + "-T", tpLog, "taker", extDest);
+    tpLog("swap complete ✓ — " + (roleIsA ? "XMR" : "XNO") + " sent to " + extDest.slice(0, 12) + "…" + extDest.slice(-6));
     swOffersRefresh(true);
   } catch (e) { tpLog("stopped: " + (e && e.message || e)); }
   finally { $("tpTake").disabled = false; tpResetReview(); }
 };
+if ($("tpDest")) $("tpDest").addEventListener("input", () => { tpResetReview(); tpBtnSync(); });
 if ($("tpWait")) $("tpWait").onclick = async () => {
   try {
-    if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first."); appView("wallet"); return; }
+    if (!walletApi || !walletApi.address()) { tpLog("Unlock your wallet first — you'll be brought straight back here."); appReturnView = "swap"; appView("wallet"); return; }
     $("tpWait").disabled = true; tpLog("loading engine…"); await tpEnsure();
     const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
     // The maker waits on ITS live offer for the coin it is selling (swSide).
@@ -2993,7 +4129,8 @@ function tpSessionsRender() {
   for (const sess of open) {
     const st = tpStore(sess.id);
     const steps = ["lock", "lockseen", "fund", "open", "refund", "claim", "x", "sweep"].filter(k => st.get(k));
-    const canResume = (sess.roleIsA && st.get("x")) || (!sess.roleIsA && st.get("claim"));
+    const aRecoverable = sess.roleIsA && st.get("open") && st.get("refund");
+    const canResume = (sess.roleIsA && (st.get("x") || aRecoverable)) || (!sess.roleIsA && (st.get("claim") || st.get("lock")));
     const row = document.createElement("div"); row.className = "hint"; row.style.margin = ".4rem 0";
     const amt = raw2(sess.deal.xnoRaw, 30) + " XNO ⇄ " + raw2(sess.deal.xmrAtomic, 12) + " XMR";
     row.textContent = new Date(sess.at).toLocaleString() + " · " + (sess.role === "maker" ? "your offer" : "you took an offer") + " · " + amt
@@ -3002,23 +4139,30 @@ function tpSessionsRender() {
     box.append(row);
     const b = document.createElement("button"); b.style.width = "100%";
     if (canResume) {
-      b.textContent = sess.roleIsA ? "Resume — sweep my Monero" : "Mark finished";
+      b.textContent = sess.roleIsA ? (st.get("x") ? "Resume — sweep my Monero" : "Recover — refund or finish")
+                                   : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
       b.onclick = async () => {
         b.disabled = true;
         try {
           await tpEnsure(); const TP = window.XnoxmrTwoParty;
           const party = TP.restore(walletWasm, st.get("party"), null);
-          await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party);
-          st.set("done", { at: Date.now() }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() });
-          histAdd({ at: Date.now(), role: sess.role, roleIsA: sess.roleIsA, side: sess.deal.side, xnoRaw: sess.deal.xnoRaw, xmrAtomic: sess.deal.xmrAtomic, priceE9: sess.deal.priceE9, session: sess.id });
-          tpLog("finished ✓"); tpSessionsRender();
+          const res = await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party) || {};
+          st.set("done", { at: Date.now(), result: res }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() });
+          if (!res.refunded && !res.recovered) histAdd({ at: Date.now(), role: sess.role, roleIsA: sess.roleIsA, side: sess.deal.side, xnoRaw: sess.deal.xnoRaw, xmrAtomic: sess.deal.xmrAtomic, priceE9: sess.deal.priceE9, session: sess.id });
+          tpLog(res.refunded ? "refunded ✓ — your XNO is back" : res.recovered ? "recovered ✓ — your XMR is back" : "finished ✓"); tpSessionsRender();
         } catch (e) { tpLog("resume stopped: " + (e && e.message || e)); b.disabled = false; }
       };
     } else {
-      b.textContent = "Cannot auto-resume: both browsers must be on the same session — keep this data, contact the counterparty";
+      b.textContent = "Nothing recoverable on your side yet (no funds moved, or waiting on the counterparty) — keep this data";
       b.disabled = true;
     }
     box.append(b);
+  }
+  // AUTO-RECOVERY: refunds and recoveries need no human. Run the first eligible
+  // session automatically (once per page load; the wallet must be unlocked).
+  if (!window.__tpAutoResumed && tpWalletOpen()) {
+    const btn = box.querySelector("button:not(:disabled)");
+    if (btn) { window.__tpAutoResumed = true; tpLog("auto-recovering an unfinished swap…"); btn.click(); }
   }
 }
 // ---- local history of settled swaps ----------------------------------------

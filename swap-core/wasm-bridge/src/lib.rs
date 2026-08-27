@@ -799,6 +799,25 @@ pub fn presig_verify(presig: &[u8], account: &[u8], message: &[u8]) -> bool {
 
 /// Verify a completed 64-byte signature as a real Nano signature for
 /// `account` over `message`.
+/// Sign an arbitrary message with the ed25519-blake2b key derived from
+/// `seed_hex` (the same key as the Nano account for that seed). The signature
+/// verifies with `nano_check(account, message, sig)`. Used to AUTHENTICATE the
+/// rendezvous handshake: the maker signs (offer hash || its ephemeral pubkey)
+/// so a taker can bind the reply to the account that posted the offer, closing
+/// the unauthenticated-ECDH MITM window. Returns 64 bytes, or empty on failure.
+#[wasm_bindgen]
+pub fn msg_sign(seed_hex: &str, message: &[u8]) -> Vec<u8> {
+    let Some(key) = key_from_seed(seed_hex) else { return Vec::new() };
+    let vk = signing::VerifyingKey::from(&key);
+    let account: [u8; 32] = vk.serialize().unwrap().try_into().unwrap();
+    let sig = key.sign(OsRng, message);
+    let sig_bytes: [u8; 64] = sig.serialize().unwrap().try_into().unwrap();
+    if !signing::nano_verify::verify(&account, message, &sig_bytes) {
+        return Vec::new();
+    }
+    sig_bytes.to_vec()
+}
+
 #[wasm_bindgen]
 pub fn nano_check(account: &[u8], message: &[u8], signature: &[u8]) -> bool {
     let (Ok(a), Ok(s)) = (
