@@ -27,10 +27,14 @@ function parseXmr(s) { const m = String(s).trim().match(/^(\d+)(?:\.(\d+))?$/); 
 // A fetch transport for the wasm Monero client, failing over across nodes.
 function moneroPostFor(nodes) {
   const list = nodes.map((u) => String(u).replace(/\/+$/, "")).filter(Boolean);
+  // Rotate the starting node per request — a lagging (stale-tip) node that still
+  // answers would otherwise pin every height/conf read (see swapMoneroPost).
+  let rr = 0;
   return async (route, body) => {
     const j = body.length && (body[0] === 0x7b || body[0] === 0x5b);
     let lastErr = "no Monero node answered";
-    for (const url of list) {
+    const order = list.map((_, i) => list[(rr + i) % list.length]); rr = (rr + 1) % Math.max(1, list.length);
+    for (const url of order) {
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
       try {
         const r = await fetch(url + "/" + route, { method: "POST", body, signal: ctrl.signal, headers: { "content-type": j ? "application/json" : "application/octet-stream" } });
