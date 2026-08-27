@@ -49,6 +49,7 @@ const out = (o) => console.log(JSON.stringify(o, null, 2));
 let DIE_SOFT = false;   // watch mode: refusals throw instead of killing the process
 let WATCH_MODE = false; // persistent process: settlement may run in the background
 let __settling = null;  // { slot, block, at } — one settlement at a time per offer
+let __resuming = null;  // { sid, at } — one crash-recovery resume at a time (background under watch)
 const die = (msg, extra) => { out(Object.assign({ ok: false, error: msg }, extra || {})); if (DIE_SOFT) { const e = new Error(msg); e.soft = true; throw e; } process.exit(1); };
 
 // ---- wallet (read from .env; never printed) --------------------------------
@@ -554,7 +555,7 @@ CMDS.tick = async (args) => {
     // presig and the refund pre-signature are PERSISTED, so a dead process's
     // swap either completes, refunds (XNO side), or recovers the locked XMR
     // from the counterparty's refund — with no counterparty online.
-    if (AUTOSETTLE && live && !__settling) {   // never double-run the session that is settling right now
+    if (AUTOSETTLE && live && !__settling && !__resuming) {   // never double-run a settling or already-resuming session
       try {
         const files = fs.existsSync(STATE_DIR) ? fs.readdirSync(STATE_DIR).filter((f) => f.startsWith("sess_") && f.endsWith(".json")) : [];
         for (const f of files) {
@@ -569,19 +570,34 @@ CMDS.tick = async (args) => {
             continue;
           }
           if (!roleIsA && !o.lock) { store.set("done", { at: Date.now(), result: { abandoned: true } }); act("abandoned session " + sid.slice(0, 10) + " (nothing locked)"); continue; }
-          act("resuming unfinished swap " + sid.slice(0, 10) + "…");
           const wApi = walletFor(seed);
           const priceFn = async () => { const p2 = await marketPrice(); return p2.ok ? { ok: true, mid: p2.mid, sources: p2.sources, at: Date.now() } : { ok: false, reason: p2.reason }; };
+          // Under watch the resume (which may scan Monero / wait on chains for
+          // minutes) runs in the BACKGROUND, so recovering an old session never
+          // blocks the accept loop — the maker keeps taking new offers while a
+          // prior session settles/refunds/recovers. A cron tick (own process)
+          // keeps it synchronous.
+          const bgNote = (m) => console.error("[resume " + sid.slice(0, 10) + "] " + m);
           const rdeps = { wasm, xmr: XMR, beacon, urls: NANO_NODES, walletApi: wApi, moneroPost: wApi.moneroPost(),
-                          note: (m) => act("resume: " + m), store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2,
+                          note: WATCH_MODE ? bgNote : ((m) => act("resume: " + m)), store, price: priceFn, abortBps: 1, maxUnrealizedLossBps: 50, maxStress: 2,
                           recoverWaitMs: 60 * 1000, fundWaitMs: FUND_WAIT_MS,
                           claimWaitMs: Math.max(60 * 1000, 60 * 60 * 1000 - (Date.now() - ((o.presigned && o.presigned.at) || Date.now()))) };
-          try {
-            const rparty = TP.restore(wasm, o.party, null);
-            const res = await (roleIsA ? TP.runA : TP.runB)(rdeps, rparty) || {};
-            store.set("done", { at: Date.now(), result: res });
-            act("resumed " + sid.slice(0, 10) + ": " + (res.refunded ? "REFUNDED" : res.recovered ? "RECOVERED" : "SETTLED"));
-          } catch (e) { act("resume " + sid.slice(0, 10) + " pending: " + String((e && e.message) || e).slice(0, 120)); }
+          const runResume = () => (roleIsA ? TP.runA : TP.runB)(rdeps, TP.restore(wasm, o.party, null));
+          if (WATCH_MODE) {
+            __resuming = { sid, at: Date.now() };
+            runResume()
+              .then((res) => { const r = res || {}; store.set("done", { at: Date.now(), result: r }); bgNote(r.refunded ? "REFUNDED" : r.recovered ? "RECOVERED" : "SETTLED ok"); })
+              .catch((e) => bgNote("pending (retries next resume): " + String((e && e.message) || e).slice(0, 120)))
+              .finally(() => { __resuming = null; });
+            act("resuming unfinished swap " + sid.slice(0, 10) + " in the background — maker loop stays responsive");
+          } else {
+            act("resuming unfinished swap " + sid.slice(0, 10) + "…");
+            try {
+              const res = await runResume() || {};
+              store.set("done", { at: Date.now(), result: res });
+              act("resumed " + sid.slice(0, 10) + ": " + (res.refunded ? "REFUNDED" : res.recovered ? "RECOVERED" : "SETTLED"));
+            } catch (e) { act("resume " + sid.slice(0, 10) + " pending: " + String((e && e.message) || e).slice(0, 120)); }
+          }
           break;   // one session per tick keeps the tick bounded
         }
       } catch (e) { act("session scan skipped: " + (e && e.message || e)); }
