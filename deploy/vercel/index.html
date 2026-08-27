@@ -1441,6 +1441,7 @@ async function smartStart(resumeCoin) {
   }
   smartTick();
   smartTimer = setInterval(smartTick, SMART.POLL_MS);
+  smartWatchRv();
 }
 function smartUnloadGuard(e) {
   if (smartState && smartState.running) { e.preventDefault(); e.returnValue = "Smart Offer is running — your offer resumes when you reopen, but a settlement in progress needs this page."; }
@@ -1494,6 +1495,36 @@ async function smartWithdraw(coinOverride) {
 // for a take-request. When one arrives, validate it against OUR posted price
 // and size, run the joint ceremony and the maker's settlement driver, record
 // the fill, then re-post a fresh offer (new block ⇒ new rendezvous).
+// Realtime accept: a take-request is an ON-CHAIN send to the offer's
+// rendezvous account. Watch that account over the Nano websocket and tick the
+// moment it fires, instead of making the taker wait out the 30 s poll.
+let smartWs = null, smartWsWatched = "", smartWsNudge = 0;
+async function smartWsSub() {
+  try {
+    if (!smartState || !smartState.running || !smartState.offerHash) return;
+    if (!smartWs || smartWs.readyState !== 1) return;
+    const mb = window.XnoxmrTwoParty.rvBox(smartState.offerHash);
+    const hex = await tpRelay().mailboxAccountHex(mb);
+    const addr = expWasm.nano_address_encode(hexToBytes(hex));
+    if (addr === smartWsWatched) return;
+    smartWs.send(JSON.stringify({ action: "subscribe", topic: "confirmation", options: { accounts: [addr] } }));
+    smartWsWatched = addr;
+  } catch (e) {}
+}
+function smartWatchRv() {
+  if (!smartWs) {
+    try { smartWs = new WebSocket("wss://ws.nano.to"); } catch (e) { return; }
+    smartWs.onopen = () => { smartWsWatched = ""; smartWsSub(); };
+    smartWs.onmessage = () => {
+      const n = Date.now();
+      if (n - smartWsNudge > 3000 && smartState && smartState.running && !smartState.settling) { smartWsNudge = n; smartTick(); }
+    };
+    smartWs.onclose = () => { smartWs = null; setTimeout(() => { if (smartState && smartState.running) smartWatchRv(); }, 5000); };
+    smartWs.onerror = () => { try { smartWs.close(); } catch (e) {} };
+  }
+  smartWsSub();
+}
+setInterval(smartWsSub, 10000);   // re-subscribe when the offer block changes (repost/reprice)
 async function smartPollTake() {
   const TP = window.XnoxmrTwoParty, M = window.XnoxmrMailbox;
   if (!TP || !M || !smartState.offerHash) return false;
@@ -3836,7 +3867,7 @@ function tpShowDeposit(coin, needAmt, haveAmt) {
       ? ("monero:" + addr + "?tx_amount=" + (+short.toFixed(12)))          // Monero URI: tx_amount in XMR
       : ("nano:" + addr + "?amount=" + (BigInt(Math.round(short * 1e6)) * (10n ** 24n)).toString());  // Nano URI: amount in raw
     $("tpDepTitle").textContent = "Deposit " + unit + " to fund your swap";
-    $("tpDepMsg").textContent = "This swap needs about " + needAmt.toFixed(dp) + " " + unit + ". Send at least " + short.toFixed(dp) + " " + unit + " to the address below (or scan the code) — detected automatically."
+    $("tpDepMsg").textContent = "This swap needs " + needAmt.toFixed(dp) + " " + unit + " total. You already have " + (haveAmt || 0).toFixed(dp) + " " + unit + " in your wallet, so send the remaining " + short.toFixed(dp) + " " + unit + " (" + (haveAmt || 0).toFixed(dp) + " + " + short.toFixed(dp) + " = " + needAmt.toFixed(dp) + "). The code pre-fills exactly that amount — detected automatically."
       + (isXmr ? " Monero needs ~10 confirmations (~20 min) to become spendable." : "");
     if ($("tpDepQr")) { const drew = tpDrawQr($("tpDepQr"), uri); $("tpDepQr").style.display = drew ? "block" : "none"; }
     $("tpDepAddr").textContent = addr;

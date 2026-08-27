@@ -97,6 +97,23 @@ refund — so "autonomous" never means "unconditional". Still, respect these:
 
 Do not raise the guardrails or bypass a refusal.
 
+## Realtime acceptance — run `watch --live` (preferred)
+
+A cron `tick` makes a taker wait up to the whole interval before you accept.
+`watch --live` is the same loop as a persistent process: after each tick it
+subscribes to the resting offer's rendezvous account over the Nano websocket —
+a take-request is an on-chain send to that account — and ticks the **instant**
+one lands, so takers are accepted in seconds, not minutes. It follows reposts
+and reprices to the new rendezvous automatically and keeps a fallback tick
+every `XNOXMR_TICK_MS` (default 180000 ms).
+
+```bash
+node <REPO>/integrations/hermes/scripts/xnoxmr.cjs watch --side 0 --live
+```
+
+Run it under a supervisor (systemd, pm2, or a restart-on-exit shell loop); the
+cron `tick` below remains a fine fallback if you prefer stateless processes.
+
 ## The loop — `tick`, on a cron
 
 `tick` is one safe, idempotent iteration. Run it every 2–5 minutes:

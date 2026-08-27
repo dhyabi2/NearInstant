@@ -657,6 +657,58 @@ CMDS.settle = async () => {
         reminder: "every irreversible step is still certified; a losing or fast-moving market aborts safely (decline / refund). It has NOT yet completed on-chain between two real parties — watch the first real runs and use small amounts." });
 };
 
+// watch: REALTIME maker. A cron tick makes a taker wait up to the whole
+// interval; watch is a persistent process that runs the same tick, then
+// subscribes to the resting offer's rendezvous account over the Nano websocket
+// (a take-request is an on-chain send to it) and ticks the INSTANT one lands.
+CMDS.watch = async (args) => {
+  const seed = makerSeed(); if (!seed) return die("no maker wallet configured");
+  if (!args.live) return die("watch is a live maker loop — re-run with --live");
+  const WS_URL = env("XNOXMR_NANO_WS", "wss://ws.nano.to");
+  const tickMs = Math.max(30000, parseInt(env("XNOXMR_TICK_MS", "180000"), 10) || 180000);
+  const log = (m) => console.error("[watch " + new Date().toISOString().slice(11, 19) + "] " + m);
+  let running = false, queued = false;
+  const runTick = async (why) => {
+    if (running) { queued = true; return; }
+    running = true;
+    try { log("tick (" + why + ")"); await CMDS.tick(args); }
+    catch (e) { log("tick error: " + (e && e.message || e)); }
+    finally { running = false; if (queued) { queued = false; setTimeout(() => runTick("queued"), 250); } }
+  };
+  let ws = null, watched = "";
+  const rvAddress = async () => {
+    try {
+      const st = stLoad(); if (!st.offer) return null;
+      const hex = await relayFor(seed).mailboxAccountHex(TP.rvBox(st.offer.block));
+      const b = new Uint8Array(hex.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(hex.substr(i * 2, 2), 16);
+      return wasm.nano_address_encode(b);
+    } catch (e) { return null; }
+  };
+  const resub = async () => {
+    const a = await rvAddress();
+    if (!a || a === watched || !ws || ws.readyState !== 1) return;
+    ws.send(JSON.stringify({ action: "subscribe", topic: "confirmation", options: { accounts: [a] } }));
+    watched = a; log("watching rendezvous " + a.slice(0, 20) + "…");
+  };
+  let lastNudge = 0;
+  const connect = () => {
+    try { ws = new WebSocket(WS_URL); } catch (e) { setTimeout(connect, 15000); return; }
+    ws.onopen = () => { watched = ""; resub(); };
+    ws.onmessage = (ev) => {
+      try { const d = JSON.parse(String(ev.data)); if (d && d.topic === "confirmation") {
+        const n = Date.now(); if (n - lastNudge > 3000) { lastNudge = n; log("rendezvous activity — accepting now"); runTick("websocket"); } } } catch (e) {}
+    };
+    ws.onclose = () => { ws = null; setTimeout(connect, 5000); };
+    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  };
+  connect();
+  await runTick("start");
+  setInterval(resub, 10000);                       // follow reposts/reprices to the new rendezvous
+  setInterval(() => runTick("interval"), tickMs);  // fallback: everything a cron tick did
+  log("realtime maker running — ws " + WS_URL + ", fallback tick every " + Math.round(tickMs / 1000) + "s. Ctrl-C stops (state is persisted; crash recovery resumes).");
+  await new Promise(() => {});                     // stay alive
+};
+
 CMDS.help = async () => out({
   ok: true,
   commands: {
@@ -670,7 +722,8 @@ CMDS.help = async () => out({
     peek: "READ-ONLY: every take-request on my offer, validated + certified, nothing committed",
     receive: "[--live]   pocket any incoming (receivable) XNO; cron this so new funds land. Nano is pull-based.",
     decline: "--slot n [--reason text] --live   tell a taker we will not fill (they stop waiting)",
-    tick: "[--side 0|1] [--size xno] [--xmr amt] [--live]   ONE safe iteration of the maker loop; offers CAPPED to fundable balance; cron this. Never settles.",
+    tick: "[--side 0|1] [--size xno] [--xmr amt] [--live]   ONE safe iteration of the maker loop; offers CAPPED to fundable balance.",
+    watch: "--side 0|1 [--size xno] --live   REALTIME maker: tick + Nano-websocket watch on the rendezvous, accepts takes instantly; fallback tick every XNOXMR_TICK_MS (180s)",
     "xmr balance": "read-only spendable/total XMR + scan height (side-1 makers)",
     "xmr scan": "[--max-blocks N]   advance the Monero scan to catch up (cron this for side 1)",
     settle: "REFUSED - explains why, and what to do instead",
