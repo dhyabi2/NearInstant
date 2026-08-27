@@ -347,6 +347,9 @@
     color:#8a5a00;background:#fff6e8;border:1.5px solid #e6b25c;padding:.16rem .42rem;flex:0 0 auto}
   .oempty .ecta{margin-top:.9rem;font-size:.8rem;font-weight:750;color:var(--ink);border-top:2px solid var(--ink);padding-top:.7rem}
   .oempty .ecta b{color:var(--burnt)}
+  .ecta-btn{width:100%;font-family:inherit;font-weight:850;font-size:.92rem;padding:.7rem 1rem;border:2px solid var(--ink);
+    background:var(--ink);color:#fff;cursor:pointer;box-shadow:3px 3px 0 var(--ink);transition:transform .06s ease}
+  .ecta-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
   .rm:hover{color:var(--burnt)}
   .add{display:flex;gap:.4rem;margin-top:.4rem}
   .add input{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:.72rem;padding:.4rem .5rem;border:2px solid var(--ink);background:#fff}
@@ -2411,10 +2414,10 @@ async function swRenderEmpty(box, raw, side) {
     }
   }
   const cta = document.createElement("div"); cta.className = "ecta";
-  if (raw.length) cta.append(document.createTextNode("Want to trade now? "));
-  const b2 = document.createElement("b"); b2.textContent = "Post a fresh offer from Earn → Smart Offer"; cta.append(b2);
-  cta.append(document.createTextNode(" — it goes live instantly, for 10 minutes."));
-  wrap.append(cta);
+  const bt = document.createElement("button"); bt.className = "ecta-btn";
+  bt.textContent = raw.length ? "Post a fresh offer — live instantly, for 10 minutes" : "Be the first — post an offer now";
+  bt.onclick = () => { appView("earn"); try { const sb = $("smartBtn"); if (sb) sb.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} };
+  cta.append(bt); wrap.append(cta);
   box.append(wrap);
 }
 // Live-book liquidity total, shown under the machine (the "liquidity pools"
