@@ -685,63 +685,11 @@
 
         <!-- ===================== AI AGENT ===================== -->
         <div class="view hidden" id="viewAgent" style="margin-top:1rem">
-          <div class="auxhead"><span>Your AI cashier — the autonomous Hermes agent</span></div>
-          <div class="sub">This exchange runs as a skill for the <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener noreferrer">Hermes agent</a> — a self-hosted, self-improving AI agent. Once installed, Hermes makes the market for you on its own: it reads the live order book, prices offers with the same volatility-adaptive spread this page uses, posts, reprices and withdraws them on a schedule, and detects and certifies profitable takes. No browser, no babysitting — it drives the same protocol code the app does.</div>
-
-          <div class="glab" style="margin-top:1.2rem">Install your AI cashier</div>
-          <div class="sub" style="margin-top:.3rem">Everything ships in this project&rsquo;s open-source repo &mdash; the agent skill, the CLI, and the full protocol code this page runs:</div>
-          <div class="mono" style="margin-top:.4rem;font-size:.82rem;word-break:break-all"><a href="https://github.com/dhyabi2/AtomicSwapCashier" target="_blank" rel="noopener noreferrer">https://github.com/dhyabi2/AtomicSwapCashier</a></div>
-          <ul style="margin:.5rem 0 0;padding-left:1.1rem;line-height:1.7;color:var(--ink)">
-            <li><span class="mono">git clone https://github.com/dhyabi2/AtomicSwapCashier</span> on any machine with Node.js (a $5 VPS is plenty).</li>
-            <li>Set <span class="mono">XNOXMR_MAKER_SEED</span> to the wallet seed the cashier trades with, and fund it with the coin it sells.</li>
-            <li>Start it: <span class="mono">node integrations/hermes/scripts/xnoxmr.cjs watch --side 0 --live</span> (sell XNO) and/or <span class="mono">--side 1 --live</span> (sell XMR, with <span class="mono">XNOXMR_XMR_LIQUIDITY</span>).</li>
-            <li>The full manual lives in the repo at <span class="mono">integrations/hermes/SKILL.md</span> &mdash; every command, guardrail and setting, including the opt-in instant tier.</li>
-          </ul>
-
-          <div class="glab" style="margin-top:1.2rem">What Hermes does on its own</div>
-          <ul style="margin:.4rem 0 0;padding-left:1.1rem;line-height:1.7;color:var(--ink)">
-            <li>Reads the live order book and quotes a volatility-adaptive spread.</li>
-            <li>Posts, reprices and withdraws your offers on a schedule (cron).</li>
-            <li>Detects a taker, certifies the deal is a win, and declines the rest.</li>
-            <li>Runs unattended on a $5 VPS or your own machine; reports each cycle.</li>
-          </ul>
-
-          <div class="glab" style="margin-top:1.2rem">Certified win, or no action</div>
-          <div class="sub" style="margin-top:.3rem">Every offer, every accepted take, and every irreversible step is checked to be profitable at the live market — after fees, with active volatility monitoring and an unrealised-loss limit — or it is refused. It never acts on an unverified or fast-moving price.</div>
-
-          <div class="glab" style="margin-top:1.2rem">Settlement is autonomous, end to end</div>
-          <div class="sub" style="margin-top:.3rem">Hermes settles each certified take itself — <b>on by default</b>: it runs the full 25–40 minute settlement (Monero confirmations included), and if the process dies partway it auto-resumes on the next tick, completing, refunding, or recovering. Every irreversible step is still certified against the live market, so a losing or fast-moving deal aborts safely. Prefer a person on the money? Set <span class="mono">XNOXMR_AUTOSETTLE=0</span> and certified takes are handed to a human instead.</div>
-
-          <div class="glab" style="margin-top:1.2rem">Run it fully self-hosted (local proof-of-work &amp; nodes)</div>
-          <div class="sub" style="margin-top:.3rem">By default Hermes uses this site's proof-of-work helper and public RPC nodes. For full independence — no third party in the loop — point it at your own:</div>
-          <ul style="margin:.4rem 0 0;padding-left:1.1rem;line-height:1.7;color:var(--ink)">
-            <li><b>Nano proof-of-work</b> is required for every block. Run a local worker and set <span class="mono">XNOXMR_WORK_URL</span> to it (otherwise Hermes falls back to slower in-process PoW).</li>
-            <li><b>Nano node</b> — set <span class="mono">XNOXMR_NANO_NODES</span> to your own node(s).</li>
-            <li><b>Monero node</b> — run your own <span class="mono">monerod</span> and set <span class="mono">XNOXMR_MONERO_NODES</span> to <span class="mono">http://127.0.0.1:18081</span>. Monero needs no client-side PoW; a local node just removes reliance on public ones.</li>
-          </ul>
-          <div class="mono" style="margin-top:.5rem;font-size:.82rem;line-height:1.5;word-break:break-all">
-            <div style="color:var(--muted)">Nano work server (local PoW)</div>
-            <a href="https://github.com/nanocurrency/nano-work-server" target="_blank" rel="noopener noreferrer">https://github.com/nanocurrency/nano-work-server</a>
-            <div style="color:var(--muted);margin-top:.7rem">Monero daemon (run your own node)</div>
-            <a href="https://www.getmonero.org/downloads/" target="_blank" rel="noopener noreferrer">https://www.getmonero.org/downloads/</a>
-          </div>
-
-          <div class="glab" style="margin-top:1.2rem">Links</div>
-          <div class="mono" style="margin-top:.4rem;font-size:.82rem;line-height:1.5;word-break:break-all">
-            <div style="color:var(--muted)">Hermes agent</div>
-            <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener noreferrer">https://github.com/NousResearch/hermes-agent</a>
-            <div style="color:var(--muted);margin-top:.7rem">The skill (SKILL.md)</div>
-            <a href="https://github.com/dhyabi2/NearInstant/blob/main/integrations/hermes/SKILL.md" target="_blank" rel="noopener noreferrer">https://github.com/dhyabi2/NearInstant/blob/main/integrations/hermes/SKILL.md</a>
-            <div style="color:var(--muted);margin-top:.7rem">The certified-win rules it enforces</div>
-            <a href="https://github.com/dhyabi2/NearInstant/blob/main/integrations/hermes/references/certify-profit.md" target="_blank" rel="noopener noreferrer">https://github.com/dhyabi2/NearInstant/blob/main/integrations/hermes/references/certify-profit.md</a>
-            <div style="color:var(--muted);margin-top:.7rem">The tool itself (xnoxmr.cjs)</div>
-            <a href="https://github.com/dhyabi2/NearInstant/blob/main/integrations/hermes/scripts/xnoxmr.cjs" target="_blank" rel="noopener noreferrer">https://github.com/dhyabi2/NearInstant/blob/main/integrations/hermes/scripts/xnoxmr.cjs</a>
-            <div style="color:var(--muted);margin-top:.7rem">The folder (install from here)</div>
-            <a href="https://github.com/dhyabi2/NearInstant/tree/main/integrations/hermes" target="_blank" rel="noopener noreferrer">https://github.com/dhyabi2/NearInstant/tree/main/integrations/hermes</a>
-          </div>
+          <div class="auxhead"><span>AI Cashier</span></div>
+          <div class="sub" style="margin-top:.3rem">Run your own autonomous cashier for this exchange — everything you need is here:</div>
+          <div class="mono" style="margin-top:.6rem;font-size:.9rem;word-break:break-all"><a href="https://github.com/dhyabi2/AtomicSwapCashier" target="_blank" rel="noopener noreferrer">https://github.com/dhyabi2/AtomicSwapCashier</a></div>
         </div>
 
-        <!-- ===================== FAQ ===================== -->
         <div class="view hidden" id="viewFaq" style="margin-top:1rem">
           <details class="faq"><summary>Why is joining early better?</summary><div class="a">One honest reason: <b>less competition</b>. Swappers always take the best-priced live offer; when few people are providing, more of the trades flow through <i>your</i> coins. There are no levels, ranks or priority — nothing is granted for tenure. It is <b>not a guaranteed return</b>: no trades, no earnings.</div></details>
           <details class="faq"><summary>Can you take or freeze my coins?</summary><div class="a">No. This runs entirely in your browser with <b>no server of ours in the middle</b>. Your key is generated here, encrypted with your passphrase (memory-hard Argon2id → AES-256-GCM), and never leaves this device. A swap is enforced by cryptography, 2-of-2 joint accounts and adaptor signatures, not by trusting us or anyone else.</div></details>
