@@ -155,37 +155,48 @@
     // the difference into the unspendable namespace account. Disagreement
     // (including opened-vs-unopened) aborts instead of guessing.
     async function accountInfoQuorum(urls, address) {
-      const answers = [];
-      for (const u of urls.slice(0, 3)) {
+      // Read the head from a WIDE set of nodes and require two to AGREE, so one
+      // lying/under-reporting node can't set the head alone (which could burn
+      // funds on a send). Crucially, a node that is rate-limited (HTTP 429,
+      // "too many requests") or errored is NOT a vote — only a real frontier or
+      // a genuine "account not found" (unopened) counts. Reading only the first
+      // 3 nodes, and mis-counting a 429 as an "unopened" vote, is what broke the
+      // balance read when the top nodes were rate-limited.
+      const list = urls.slice(0, 6);
+      const single = urls.length < 2;             // a 1-node config trusts its one answer
+      const votes = [];                            // {frontier,balance,representative} | null (unopened)
+      const key = (v) => (v ? v.frontier + ":" + v.balance : "__unopened__");
+      const twoAgree = () => {
+        const c = {};
+        for (const v of votes) { const k = key(v); (c[k] = c[k] || []).push(v); if (c[k].length >= 2) return { v: c[k][0] }; }
+        return null;
+      };
+      for (const u of list) {
+        let j = null;
         try {
-          const j = await rpc([u], {
-            action: "account_info", account: address, representative: "true",
-          }, fetchFn);
-          if (j && j.frontier) {
-            answers.push({ frontier: j.frontier.toLowerCase(), balance: String(j.balance),
-              representative: j.representative });
-          } else if (j && j.error) {
-            answers.push(null); // consistently reported unopened
-          }
-        } catch (e) { /* unreachable endpoint: no vote either way */ }
-      }
-      if (answers.length === 0) throw new Error("no Nano connection answered");
-      // Require a real quorum: when ≥2 endpoints are configured, at least 2 must
-      // answer AND agree — so one lying or rate-limited node can't set the head
-      // alone (which could burn funds on a send). Only a 1-endpoint config trusts one.
-      const configured = urls.slice(0, 3).length;
-      if (configured >= 2 && answers.length < 2) {
-        throw new Error("not enough Nano connections answered to safely read this account (need at least 2 agreeing); add/enable more nodes and retry");
-      }
-      const first = answers[0];
-      for (const a of answers.slice(1)) {
-        const same = (a === null && first === null) ||
-          (a !== null && first !== null && a.frontier === first.frontier && a.balance === first.balance);
-        if (!same) {
-          throw new Error("your Nano connections disagree about this account, refusing to sign; check them and try again shortly");
+          j = await rpc([u], { action: "account_info", account: address, representative: "true" }, fetchFn);
+        } catch (e) { continue; }                  // unreachable / timeout / bad response → no vote
+        if (j && j.frontier) {
+          votes.push({ frontier: j.frontier.toLowerCase(), balance: String(j.balance), representative: j.representative });
+        } else if (j && j.error && /not\s*found|unopened|missing/i.test(String(j.error))) {
+          votes.push(null);                        // genuinely unopened account
+        } else {
+          continue;                                // rate-limited / node error → NOT a vote, try the next node
         }
+        if (single) return votes[0];               // one configured node: its single answer stands
+        const win = twoAgree();
+        if (win) return win.v;                      // reached a 2-node agreeing quorum → done (stops early)
       }
-      return first;
+      // No agreeing pair.
+      if (votes.length === 0) {
+        throw new Error("no Nano node answered the balance read — every configured node is unreachable or rate-limited right now. Wait a moment and retry, or add nodes in Settings.");
+      }
+      if (new Set(votes.map(key)).size > 1) {
+        throw new Error("your Nano connections disagree about this account, refusing to sign; check them and try again shortly");
+      }
+      // Everyone who answered agreed, but fewer than two did (the rest were
+      // rate-limited or down) — we still refuse to trust a single reader.
+      throw new Error("only one Nano node answered (need 2 agreeing to read safely); the others are rate-limited or down. Retry in a moment, or add more nodes in Settings.");
     }
 
     // Pocket everything receivable on the identity account (opens it if new).
