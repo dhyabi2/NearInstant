@@ -2256,6 +2256,7 @@ function xmrRouteTimeout(route) {
   // routes the time they actually need; keep the default snappy.
   if (/get_output_distribution/.test(route)) return 90000;
   if (/get_blocks/.test(route)) return 45000;
+  if (/get_transactions/.test(route)) return 45000;   // block validation fetches txs in bulk — slow nodes need more than 12 s
   return 12000;
 }
 function swapMoneroPost() {
