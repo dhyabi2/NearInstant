@@ -65,7 +65,7 @@ certified-win contract** and hold every action to it:
 
 The contract is the authority on the thresholds (accept ≥ 30 bps; a strictly
 positive net before any irreversible step; price ≤ 60 s old; ≥ 2 agreeing
-sources; refuse at stress ≥ 2; unrealised loss ≤ 50 bps; fee 0.0002 XMR
+sources; refuse at stress ≥ 2; unrealised loss ≤ 50 bps; fee 0.00008 XMR
 subtracted from every net), the profit math and its sign rule, the two
 irreversible gates, and active volatility / unrealised-P&L monitoring. The CLI
 imports the same `certify()` the app runs, so these are enforced in code — your
@@ -286,7 +286,8 @@ offer wastes a taker's time and damages the book's credibility.
 
 ## Fees make small fills losers
 
-The Monero fee is fixed (assumed 0.0002 XMR, conservative). Below some size
+The Monero fee is fixed (assumed 0.00008 XMR — 2x the real cost at the
+Unimportant priority the tx builder uses, ~0.00004/tx). Below some size
 every price loses. `quote` reports `min_take_xno`; today it is ~25–31 XNO at a
 117-bps spread. There is no upper cap on swap size (a maker offers up to its
 balance, a taker takes up to the offer); the fee-driven MINIMUM is the only
