@@ -4171,20 +4171,28 @@ function tpSessionsRender() {
       + " · joint Nano " + String(sess.jointNano || "").slice(0, 16) + "… · joint XMR " + String(sess.jointXmr || "").slice(0, 12) + "…";
     box.append(row);
     const b = document.createElement("button"); b.style.width = "100%";
+    // A taker who FUNDED XNO and saw the lock but never secured the XMR (no `x`)
+    // has exactly one safe move: broadcast the pre-signed refund it already
+    // holds. Make that a direct one-click exit — no wire, no counterparty, no
+    // waiting on a co-sign that may never come (fund-safety fix ba1905d8b4f6).
+    const refundOnly = sess.roleIsA && aRecoverable && !st.get("x");
     if (canResume) {
       b.dataset.resume = "1";   // only these (funds-moved) are eligible for AUTO-recovery
-      b.textContent = sess.roleIsA ? (st.get("x") ? "Resume — sweep my Monero" : "Recover — refund or finish")
-                                   : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
+      b.textContent = refundOnly ? ("Refund now — get your " + raw2(sess.deal.xnoRaw, 30) + " XNO back")
+                                 : sess.roleIsA ? "Resume — sweep my Monero"
+                                 : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
       b.onclick = async () => {
         b.disabled = true;
         try {
           await tpEnsure(); const TP = window.XnoxmrTwoParty;
           const party = TP.restore(walletWasm, st.get("party"), null);
-          const res = await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party) || {};
+          const res = refundOnly
+            ? (await TP.refundNow(tpDeps(st, tpLog), party) || {})
+            : (await (sess.roleIsA ? TP.runA : TP.runB)(tpDeps(st, tpLog), party) || {});
           st.set("done", { at: Date.now(), result: res }); tpIndexUpsert(sess.id, { done: true, doneAt: Date.now() });
           if (!res.refunded && !res.recovered) histAdd({ at: Date.now(), role: sess.role, roleIsA: sess.roleIsA, side: sess.deal.side, xnoRaw: sess.deal.xnoRaw, xmrAtomic: sess.deal.xmrAtomic, priceE9: sess.deal.priceE9, session: sess.id });
           tpLog(res.refunded ? "refunded ✓ — your XNO is back" : res.recovered ? "recovered ✓ — your XMR is back" : "finished ✓"); tpSessionsRender();
-        } catch (e) { tpLog("resume stopped: " + (e && e.message || e)); b.disabled = false; }
+        } catch (e) { tpLog((refundOnly ? "refund" : "resume") + " stopped: " + (e && e.message || e)); b.disabled = false; }
       };
     } else {
       // Not resumable yet. Two very different situations — say which, plainly,
