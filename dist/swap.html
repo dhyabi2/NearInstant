@@ -3056,7 +3056,21 @@ async function tpRun(hs, deal, roleIsA, sessionId, note, role, extDest) {
   // The accept certificate is the baseline every later gate marks to market
   // against (unrealised P&L). It must exist before the driver starts.
   if (hs.cert) store.set("acceptCert", hs.cert);
-  else if (!store.get("acceptCert")) { throw new Error("refusing to settle: this take was never certified"); }
+  else if (!store.get("acceptCert")) {
+    // A TAKER receives no maker certificate — but the mark-to-market gates need
+    // a baseline snapshot of the market AT ACCEPT to measure drift against, and
+    // they fail closed without one (that used to abort every taker here with
+    // "this take was never certified"). So the taker certifies the deal itself:
+    // no absolute-profit floor (a taker pays the spread, so its net-vs-mid is
+    // negative BY DESIGN — the maker's cert is the mirror image), but a
+    // trustworthy oracle (fresh, >=2 agreeing sources, not in a pump/dump) is
+    // still required, so we only ever lock funds when we can actually see the
+    // market. Downstream gates then enforce the unrealised-loss/stress limits.
+    const price = await certPrice().catch((e) => ({ ok: false, reason: String(e && e.message || e) }));
+    const c = TP.certify(deal, roleIsA, price, { minBps: -1e9, maxAgeMs: CERT.MAX_MID_AGE_MS, maxStress: CERT_MAX_STRESS });
+    if (!c || !c.ok) throw new Error("refusing to settle: can't certify the market right now (" + ((c && c.reason) || "oracle unavailable") + "). Your funds are NOT locked — nothing moved. Try again in a moment.");
+    store.set("acceptCert", c);
+  }
   const result = await (roleIsA ? TP.runA : TP.runB)(tpDeps(store, note, xmrDest), party) || {};
   store.set("done", { at: Date.now(), result });
   tpIndexUpsert(sessionId, { done: true, doneAt: Date.now(), outcome: result.declined ? "declined" : result.refunded ? "refunded" : "settled" });
