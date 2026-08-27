@@ -4192,7 +4192,11 @@ function tpSessionsRender() {
     // waiting on a co-sign that may never come (fund-safety fix ba1905d8b4f6).
     const refundOnly = sess.roleIsA && aRecoverable && !st.get("x");
     if (canResume) {
-      b.dataset.resume = "1";   // only these (funds-moved) are eligible for AUTO-recovery
+      // AUTO-recovery may fire only SAFE, non-aborting actions: sweeping XMR we
+      // already secured, or recovering our own coins from a counterparty refund.
+      // A REFUND unwinds a swap that might still complete, so it is MANUAL only —
+      // never auto-triggered on a page refresh (that was aborting live swaps).
+      if (!refundOnly) b.dataset.resume = "1";
       b.textContent = refundOnly ? ("Refund now — get your " + raw2(sess.deal.xnoRaw, 30) + " XNO back")
                                  : sess.roleIsA ? "Resume — sweep my Monero"
                                  : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
