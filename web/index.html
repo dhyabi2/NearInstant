@@ -4086,6 +4086,22 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     tpLog("Check the amounts, and that your " + di.coin + " goes to:\n  " + dest + "\nThen tap Confirm.");
     return;
   }
+  // Re-resolve to the maker's CURRENT live offer before committing. The maker
+  // reprices/reposts frequently (a decline usually rides a market move that also
+  // reprices the offer), and a take posted to a RETIRED block's rendezvous is
+  // never seen — the maker watches only its current block, so the take just
+  // hangs. If the maker's live block changed, adopt it and make the user
+  // re-confirm (the price may differ); if the maker has no live offer, refresh.
+  try {
+    const liveList = await expBeacon.scanLive(rpcState.nano, "XNO/XMR", swSelected.intent.side, OFFER_TTL_SECS);
+    const cur = liveList.find((o) => o.maker === swSelected.maker);
+    if (!cur) { tpLog("This maker's offer is no longer live (withdrawn or replaced). Refreshing the book — pick a current offer."); swOffersRefresh(true); return; }
+    if (String(cur.blockHash).toLowerCase() !== String(swSelected.blockHash).toLowerCase()) {
+      swSelected = cur; swSelRender(cur); tpResetReview(); try { tpSync(); } catch (e) {} tpBtnSync();
+      tpLog("The maker replaced this offer with a fresh one (price may have changed) — check the amounts and tap Confirm again.");
+      return;
+    }
+  } catch (e) { /* scan failed: fall through and try the selected block anyway */ }
   const deal = tpPending; const extDest = deal.dest; tpResetReview();
   window.__tpTakeRunning = true;   // from here on a live take owns the engine — block page auto-recovery (incl. through the deposit wait)
   // Fund check — guide a live-detected deposit BEFORE anything is posted, for
