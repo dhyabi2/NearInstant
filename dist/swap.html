@@ -4057,6 +4057,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     return;
   }
   const deal = tpPending; const extDest = deal.dest; tpResetReview();
+  window.__tpTakeRunning = true;   // from here on a live take owns the engine — block page auto-recovery (incl. through the deposit wait)
   // Fund check — guide a live-detected deposit BEFORE anything is posted, for
   // whichever coin the taker sells (and, for an XMR seller, the small XNO the
   // take-request posting needs). No more cryptic "identity balance too low".
@@ -4069,14 +4070,14 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     const have = await readXno();
     if (have < needXno) {
       tpLog("Your wallet needs about " + needXno.toFixed(3) + " XNO — send XNO to fund the swap (auto-detected).");
-      if (!await tpShowDeposit("xno", needXno, have)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+      if (!await tpShowDeposit("xno", needXno, have)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; tpBtnSync(); return; }
     }
   } else {
     // sell XMR → need a little XNO to post the request, and enough XMR to fund
     const dustXno = 0.01, haveXno = await readXno();
     if (haveXno < dustXno) {
       tpLog("Selling XMR also needs a little XNO to post the request — send ~" + dustXno + " XNO (auto-detected).");
-      if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+      if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; tpBtnSync(); return; }
     }
     const needXmr = Number(deal.xmrAtomic) / 1e12 + 0.001;   // pay XMR + Monero fee buffer
     let haveXmr = parseFloat(walletBal.xmr || 0);
@@ -4085,7 +4086,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     }
     if (haveXmr < needXmr) {
       tpLog("Your wallet needs about " + needXmr.toFixed(6) + " XMR — send XMR to fund the swap (auto-detected; Monero takes ~20 min to confirm).");
-      if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
+      if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); window.__tpTakeRunning = false; tpBtnSync(); return; }
     }
   }
   try {
@@ -4112,7 +4113,7 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
     tpLog("swap complete ✓ — " + (roleIsA ? "XMR" : "XNO") + " sent to " + extDest.slice(0, 12) + "…" + extDest.slice(-6));
     swOffersRefresh(true);
   } catch (e) { tpLog("stopped: " + (e && e.message || e)); }
-  finally { $("tpTake").disabled = false; tpResetReview(); }
+  finally { window.__tpTakeRunning = false; $("tpTake").disabled = false; tpResetReview(); }
 };
 if ($("tpDest")) $("tpDest").addEventListener("input", () => { tpResetReview(); tpBtnSync(); });
 if ($("tpWait")) $("tpWait").onclick = async () => {
@@ -4166,6 +4167,7 @@ function tpSessionsRender() {
     box.append(row);
     const b = document.createElement("button"); b.style.width = "100%";
     if (canResume) {
+      b.dataset.resume = "1";   // only these (funds-moved) are eligible for AUTO-recovery
       b.textContent = sess.roleIsA ? (st.get("x") ? "Resume — sweep my Monero" : "Recover — refund or finish")
                                    : (st.get("claim") ? "Mark finished" : "Recover — reclaim my XMR");
       b.onclick = async () => {
@@ -4204,8 +4206,13 @@ function tpSessionsRender() {
   }
   // AUTO-RECOVERY: refunds and recoveries need no human. Run the first eligible
   // session automatically (once per page load; the wallet must be unlocked).
-  if (!window.__tpAutoResumed && tpWalletOpen()) {
-    const btn = box.querySelector("button:not(:disabled)");
+  // TWO guards: (a) only [data-resume] buttons — real, funds-moved recoveries —
+  // never the "Clear this entry" of a setup-only session; (b) NEVER while a live
+  // take is running. Without (b) the recovery flow would seize the engine while
+  // a fresh take is mid-handshake, and the take's own funding step never ran —
+  // the maker sat waiting for XNO that never came (root cause of the stuck take).
+  if (!window.__tpAutoResumed && !window.__tpTakeRunning && tpWalletOpen()) {
+    const btn = box.querySelector("button[data-resume]:not(:disabled)");
     if (btn) { window.__tpAutoResumed = true; tpLog("auto-recovering an unfinished swap…"); btn.click(); }
   }
 }
