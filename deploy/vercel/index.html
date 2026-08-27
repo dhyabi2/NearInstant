@@ -3914,7 +3914,9 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
   // Fund check — guide a live-detected deposit BEFORE anything is posted, for
   // whichever coin the taker sells (and, for an XMR seller, the small XNO the
   // take-request posting needs). No more cryptic "identity balance too low".
-  const readXno = async () => { try { const b = await walletApi.balance(); return parseFloat((b && b.xno) || "0"); } catch (e) { return 0; } };
+  // Pocket any receivable XNO FIRST, then read: money already sent to the
+  // wallet counts, so the deposit QR only appears when genuinely short.
+  const readXno = async () => { try { try { await walletApi.receive(); } catch (e) {} const b = await walletApi.balance(); return parseFloat((b && b.xno) || "0"); } catch (e) { return 0; } };
   if (swSide === "xno") {
     // sell XNO → need XNO to post the take-request AND fund the joint
     const needXno = Number(BigInt(deal.xnoRaw) / (10n ** 24n)) / 1e6 + 0.01;
@@ -3931,7 +3933,10 @@ if ($("tpTake")) $("tpTake").onclick = async () => {
       if (!await tpShowDeposit("xno", dustXno, haveXno)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
     }
     const needXmr = Number(deal.xmrAtomic) / 1e12 + 0.001;   // pay XMR + Monero fee buffer
-    const haveXmr = parseFloat(walletBal.xmr || 0);
+    let haveXmr = parseFloat(walletBal.xmr || 0);
+    if (haveXmr < needXmr) {   // maybe just a stale scan — refresh (bounded) before showing the QR
+      try { tpLog("checking your Monero balance…"); const b = await walletApi.xmrRefresh(() => {}, { maxChunks: 10 }); haveXmr = parseFloat(b.spendable) || haveXmr; } catch (e) {}
+    }
     if (haveXmr < needXmr) {
       tpLog("Your wallet needs about " + needXmr.toFixed(6) + " XMR — send XMR to fund the swap (auto-detected; Monero takes ~20 min to confirm).");
       if (!await tpShowDeposit("xmr", needXmr, haveXmr)) { tpLog("Deposit not completed — swap not started."); tpBtnSync(); return; }
