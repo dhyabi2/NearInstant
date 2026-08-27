@@ -47,6 +47,8 @@ const beacon = B.makeBeacon(wasm, { workUrl: WORK_URL, fetch: keyedFetch });
 const MIN_ACCEPT_BPS = 30;   // must match web/index.html CERT.MIN_ACCEPT_BPS
 const out = (o) => console.log(JSON.stringify(o, null, 2));
 let DIE_SOFT = false;   // watch mode: refusals throw instead of killing the process
+let WATCH_MODE = false; // persistent process: settlement may run in the background
+let __settling = null;  // { slot, block, at } — one settlement at a time per offer
 const die = (msg, extra) => { out(Object.assign({ ok: false, error: msg }, extra || {})); if (DIE_SOFT) { const e = new Error(msg); e.soft = true; throw e; } process.exit(1); };
 
 // ---- wallet (read from .env; never printed) --------------------------------
@@ -533,7 +535,7 @@ CMDS.tick = async (args) => {
     // presig and the refund pre-signature are PERSISTED, so a dead process's
     // swap either completes, refunds (XNO side), or recovers the locked XMR
     // from the counterparty's refund — with no counterparty online.
-    if (AUTOSETTLE && live) {
+    if (AUTOSETTLE && live && !__settling) {   // never double-run the session that is settling right now
       try {
         const files = fs.existsSync(STATE_DIR) ? fs.readdirSync(STATE_DIR).filter((f) => f.startsWith("sess_") && f.endsWith(".json")) : [];
         for (const f of files) {
@@ -619,16 +621,45 @@ CMDS.tick = async (args) => {
         if (r.cert && r.cert.ok) {
           handoff = r;
           if (AUTOSETTLE && live) {
-            act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - SETTLING autonomously");
+            if (__settling) {
+              // One settlement at a time per offer. A second certified taker
+              // gets an INSTANT decline (retry after the repost) instead of
+              // silently queueing behind a 25-40 min settlement.
+              if (__settling.slot === r.slot) act("slot " + r.slot + " is the take already settling — in progress");
+              else {
+                act("certified take on slot " + r.slot + " while slot " + __settling.slot + " settles — declining so they re-take after the repost");
+                try { await TP.postDecline(relayFor(seed), st.offer.block, r.slot, "maker is settling another take on this offer — it re-posts when done; please take again then"); } catch (e) {}
+              }
+            } else {
+            act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - accepting");
             try {
               const cf = (dl) => certifyFor(st.offer.side, price)(dl);
               const hs = await TP.makerPollTake(MB, relayFor(seed), st.offer.block, st.offer.intent, maxXnoRawOf(st.offer.intent), cf);
               if (hs && hs.deal && hs.shared) {
-                const res = await settleTake(seed, st.offer, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, (m) => act(m));
-                if (res.declined || res.refunded) act((res.declined ? "declined" : "refunded") + " during settlement: " + (res.reason || ""));
-                else { act("SETTLED autonomously ok"); settled = res; st.offer = null; stSave(st); }
+                const offerSnap = st.offer;
+                const runSettle = (note) => settleTake(seed, offerSnap, { deal: hs.deal, cert: hs.cert, shared: hs.shared, slot: hs.slot }, note);
+                if (WATCH_MODE) {
+                  // Settlement takes 25-40 min; awaiting it INSIDE the tick froze
+                  // the whole maker loop (other takes neither accepted nor
+                  // declined). Under watch it runs in the background; the loop
+                  // keeps peeking/declining and holds the offer until done.
+                  __settling = { slot: hs.slot, block: offerSnap.block, at: Date.now() };
+                  runSettle((m) => console.error("[settle] " + m))
+                    .then((res) => {
+                      console.error("[settle] finished: " + (res && res.declined ? "declined: " + (res.reason || "") : res && res.refunded ? "refunded: " + (res.reason || "") : "SETTLED ok"));
+                      if (res && res.done && !res.declined && !res.refunded) { const s2 = stLoad(); s2.offer = null; stSave(s2); }
+                    })
+                    .catch((e) => console.error("[settle] error (session persists; auto-resume retries): " + (e && e.message || e)))
+                    .finally(() => { __settling = null; });
+                  act("settlement STARTED in the background (slot " + hs.slot + ") — maker loop stays responsive");
+                } else {
+                  const res = await runSettle((m) => act(m));
+                  if (res.declined || res.refunded) act((res.declined ? "declined" : "refunded") + " during settlement: " + (res.reason || ""));
+                  else { act("SETTLED autonomously ok"); settled = res; st.offer = null; stSave(st); }
+                }
               } else if (hs && hs.declined) { act("re-certify at reply time declined: " + hs.declined); }
             } catch (e) { act("settlement error (safe to retry next tick): " + (e && e.message || e)); }
+            }
           } else {
             act("CERTIFIED TAKE on slot " + r.slot + ": net " + r.cert.netBps + " bps - HAND OFF (autosettle off)");
             // Tell the taker NOW instead of letting them wait out the 10-min
@@ -642,7 +673,8 @@ CMDS.tick = async (args) => {
     // 3. the resting offer itself
     const status = await offerStatus();
     let postOutcome = null;   // "posted" | "would" | "refused" — what publishPost actually did this cycle
-    if (handoff) { act("holding the offer for the human settling the certified take"); }
+    if (__settling) { act("settlement in progress (slot " + __settling.slot + ", " + Math.round((Date.now() - __settling.at) / 1000) + "s) — holding the offer; no reprice/withdraw"); }
+    else if (handoff) { act("holding the offer for the human settling the certified take"); }
     else if (!status.hasOffer) { act("no offer resting"); postOutcome = await publishPost(); }
     else if (status.verdict === "HOLD") act("HOLD: " + status.reason);
     else if (status.verdict === "WITHDRAW") { act("WITHDRAW: " + status.reason); await publishWithdraw(); }
@@ -655,7 +687,8 @@ CMDS.tick = async (args) => {
                       : postOutcome === "would" ? "WOULD_POST"
                       : postOutcome === "refused" ? "REFUSE" : null;
     out({ ok: true, live, received, autosettle: AUTOSETTLE, settled: settled ? { realized: settled.realized || null } : null,
-          verdict: settled ? "SETTLED" : handoff ? (AUTOSETTLE ? "SETTLING" : "HANDOFF") : (status.verdict || postVerdict || (live ? "POSTED" : "WOULD_POST")), actions: log,
+          settling: __settling ? { slot: __settling.slot, seconds: Math.round((Date.now() - __settling.at) / 1000) } : null,
+          verdict: __settling ? "SETTLING" : settled ? "SETTLED" : handoff ? (AUTOSETTLE ? "SETTLING" : "HANDOFF") : (status.verdict || postVerdict || (live ? "POSTED" : "WOULD_POST")), actions: log,
           handoff: handoff ? { block: st.offer.block, slot: handoff.slot, deal: handoff.deal, certificate: handoff.cert,
                                next: "A human opens https://www.nearinstant.xyz, unlocks the maker wallet, and settles. This agent will not." } : null,
           offer: stLoad().offer ? { block: stLoad().offer.block, ask: stLoad().offer.ask, sizeXno: stLoad().offer.sizeXno, ageSeconds: Math.round((Date.now() - stLoad().offer.at) / 1000) } : null });
@@ -718,6 +751,7 @@ CMDS.watch = async (args) => {
   const seed = makerSeed(); if (!seed) return die("no maker wallet configured");
   if (!args.live) return die("watch is a live maker loop — re-run with --live");
   DIE_SOFT = true;   // inside watch a refused tick logs and continues, never exits
+  WATCH_MODE = true; // settlement runs in the BACKGROUND so the loop stays responsive
   const WS_URL0 = env("XNOXMR_NANO_WS", "wss://ws.nano.to");
   const WS_URL = (NANO_KEY && /ws\.nano\.to/.test(WS_URL0) && WS_URL0.indexOf("?") < 0) ? WS_URL0 + "/?key=" + encodeURIComponent(NANO_KEY) : WS_URL0;
   const tickMs = Math.max(30000, parseInt(env("XNOXMR_TICK_MS", "180000"), 10) || 180000);

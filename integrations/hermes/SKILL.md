@@ -119,8 +119,17 @@ holds the socket open, and close/decode problems are logged. A stuck tick
 releases its guard after `XNOXMR_TICK_TIMEOUT_MS`. With a nano.to API key, set
 `XNOXMR_NANO_RPC_KEY` and both rpc.nano.to and ws.nano.to use it.
 
+**Settlement never blocks the loop under `watch`**: a certified take's 25–40
+minute settlement runs in the background while the loop keeps peeking,
+declining losers, and holding the offer (no reprice/withdraw under a live
+swap). One settlement at a time per offer — a second certified taker gets an
+instant "settling another take — re-take after the repost" decline instead of
+silence. `tick` output carries `settling: {slot, seconds}` while one runs.
+
 Run it under a supervisor (systemd, pm2, or a restart-on-exit shell loop); the
-cron `tick` below remains a fine fallback if you prefer stateless processes.
+cron `tick` below remains a fallback — but note a cron tick still executes a
+settlement synchronously (the process must stay alive for it), one more reason
+to prefer `watch`.
 
 ## The loop — `tick`, on a cron
 
